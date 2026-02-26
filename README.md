@@ -136,3 +136,4 @@ Credentials are stored encrypted at `~/.storj-mcp/config.json` using AES-256-GCM
 ## License
 
 MIT
+# storj-uplink-mcp
