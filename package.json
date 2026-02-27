@@ -1,6 +1,6 @@
 {
   "name": "storj-uplink-mcp",
-  "version": "0.1.0",
+  "version": "0.1.0-beta.2",
   "description": "MCP server for Storj decentralized storage — use Storj with Claude, Cursor, Windsurf and any MCP client",
   "type": "module",
   "bin": {
@@ -19,7 +19,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.15.0",
-    "storj-uplink-nodejs": ">=0.1.0-beta.13",
+    "storj-uplink-nodejs": ">=0.1.0-beta.22",
     "zod": "^3.25.0"
   },
   "devDependencies": {
