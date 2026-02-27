@@ -7,7 +7,7 @@ MCP server for [Storj](https://storj.io) decentralized storage — use Storj dir
 ### Step 1 — Run the setup wizard
 
 ```bash
-npx storj-uplink-mcp-setup
+npx storj-uplink-mcp
 ```
 
 The wizard will ask for your Storj credentials (Access Grant or Satellite + API Key + Passphrase) and save them **encrypted** on your machine. You only need to do this once.
@@ -92,10 +92,10 @@ Env vars take priority over the config file.
 
 ```bash
 # Reconfigure or replace credentials
-npx storj-uplink-mcp-setup
+npx storj-uplink-mcp
 
 # Check which credential source is active (never shows secrets)
-npx storj-uplink-mcp-setup --status
+npx storj-uplink-mcp --status
 
 # Delete saved config (clean slate)
 npx storj-uplink-mcp-setup --reset
