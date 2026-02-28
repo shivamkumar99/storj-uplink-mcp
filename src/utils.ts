@@ -39,10 +39,11 @@ export function errorResponse(err: unknown): McpTextResponse {
 }
 
 // ---------------------------------------------------------------------------
-// Wrap a tool handler so any thrown error is caught and returned as text
+// Wrap a tool handler so any thrown error is caught and returned as text.
+// Use this in every tool function instead of a manual try/catch block.
 // ---------------------------------------------------------------------------
 
-export function safeCall<T>(
+export function safeCall(
   fn: () => Promise<McpTextResponse>,
 ): Promise<McpTextResponse> {
   return fn().catch((err: unknown) => errorResponse(err));

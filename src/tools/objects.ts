@@ -1,21 +1,30 @@
 import { z } from 'zod';
 import { getProject } from '../auth.js';
-import { ok, errorResponse, formatBytes, formatTimestamp, type McpTextResponse } from '../utils.js';
+import { ok, safeCall, formatBytes, formatTimestamp, type McpTextResponse } from '../utils.js';
+import {
+  bucketField,
+  keyField,
+  srcBucketField,
+  srcKeyField,
+  dstBucketField,
+  dstKeyField,
+  metadataField,
+} from './schemas.js';
 
 // ---------------------------------------------------------------------------
 // list_objects
 // ---------------------------------------------------------------------------
 
 export const listObjectsSchema = z.object({
-  bucket: z.string().min(1).describe('Bucket name'),
+  bucket: bucketField,
   prefix: z.string().optional().describe('Filter objects by this prefix (e.g. "photos/")'),
   recursive: z.boolean().optional().describe('List all objects recursively. Default: false'),
 });
 
-export async function listObjects(
+export function listObjects(
   args: z.infer<typeof listObjectsSchema>,
 ): Promise<McpTextResponse> {
-  try {
+  return safeCall(async () => {
     const project = await getProject();
     const objects = await project.listObjects(args.bucket, {
       prefix: args.prefix,
@@ -31,9 +40,7 @@ export async function listObjects(
       return `  📄 ${o.key}  (${formatBytes(o.system.contentLength)}, created: ${formatTimestamp(o.system.created)})`;
     });
     return ok(`Objects in "${args.bucket}" (${objects.length}):\n${rows.join('\n')}`);
-  } catch (err) {
-    return errorResponse(err);
-  }
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -41,14 +48,14 @@ export async function listObjects(
 // ---------------------------------------------------------------------------
 
 export const statObjectSchema = z.object({
-  bucket: z.string().min(1).describe('Bucket name'),
-  key: z.string().min(1).describe('Object key (path)'),
+  bucket: bucketField,
+  key: keyField,
 });
 
-export async function statObject(
+export function statObject(
   args: z.infer<typeof statObjectSchema>,
 ): Promise<McpTextResponse> {
-  try {
+  return safeCall(async () => {
     const project = await getProject();
     const info = await project.statObject(args.bucket, args.key);
     const result = {
@@ -61,9 +68,7 @@ export async function statObject(
       metadata: info.custom,
     };
     return ok(result);
-  } catch (err) {
-    return errorResponse(err);
-  }
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -71,20 +76,18 @@ export async function statObject(
 // ---------------------------------------------------------------------------
 
 export const deleteObjectSchema = z.object({
-  bucket: z.string().min(1).describe('Bucket name'),
-  key: z.string().min(1).describe('Object key (path) to delete'),
+  bucket: bucketField,
+  key: keyField.describe('Object key (path) to delete'),
 });
 
-export async function deleteObject(
+export function deleteObject(
   args: z.infer<typeof deleteObjectSchema>,
 ): Promise<McpTextResponse> {
-  try {
+  return safeCall(async () => {
     const project = await getProject();
     await project.deleteObject(args.bucket, args.key);
     return ok(`Object "${args.key}" deleted from bucket "${args.bucket}".`);
-  } catch (err) {
-    return errorResponse(err);
-  }
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -92,22 +95,20 @@ export async function deleteObject(
 // ---------------------------------------------------------------------------
 
 export const copyObjectSchema = z.object({
-  src_bucket: z.string().min(1).describe('Source bucket name'),
-  src_key: z.string().min(1).describe('Source object key'),
-  dst_bucket: z.string().min(1).describe('Destination bucket name'),
-  dst_key: z.string().min(1).describe('Destination object key'),
+  src_bucket: srcBucketField,
+  src_key: srcKeyField,
+  dst_bucket: dstBucketField,
+  dst_key: dstKeyField,
 });
 
-export async function copyObject(
+export function copyObject(
   args: z.infer<typeof copyObjectSchema>,
 ): Promise<McpTextResponse> {
-  try {
+  return safeCall(async () => {
     const project = await getProject();
     const info = await project.copyObject(args.src_bucket, args.src_key, args.dst_bucket, args.dst_key);
     return ok(`Copied "${args.src_bucket}/${args.src_key}" → "${args.dst_bucket}/${info.key}"`);
-  } catch (err) {
-    return errorResponse(err);
-  }
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -115,22 +116,20 @@ export async function copyObject(
 // ---------------------------------------------------------------------------
 
 export const moveObjectSchema = z.object({
-  src_bucket: z.string().min(1).describe('Source bucket name'),
-  src_key: z.string().min(1).describe('Source object key'),
-  dst_bucket: z.string().min(1).describe('Destination bucket name'),
-  dst_key: z.string().min(1).describe('Destination object key'),
+  src_bucket: srcBucketField,
+  src_key: srcKeyField,
+  dst_bucket: dstBucketField,
+  dst_key: dstKeyField,
 });
 
-export async function moveObject(
+export function moveObject(
   args: z.infer<typeof moveObjectSchema>,
 ): Promise<McpTextResponse> {
-  try {
+  return safeCall(async () => {
     const project = await getProject();
     await project.moveObject(args.src_bucket, args.src_key, args.dst_bucket, args.dst_key);
     return ok(`Moved "${args.src_bucket}/${args.src_key}" → "${args.dst_bucket}/${args.dst_key}"`);
-  } catch (err) {
-    return errorResponse(err);
-  }
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -138,19 +137,17 @@ export async function moveObject(
 // ---------------------------------------------------------------------------
 
 export const updateMetadataSchema = z.object({
-  bucket: z.string().min(1).describe('Bucket name'),
-  key: z.string().min(1).describe('Object key'),
+  bucket: bucketField,
+  key: keyField,
   metadata: z.record(z.string()).describe('Key-value metadata pairs to set on the object'),
 });
 
-export async function updateMetadata(
+export function updateMetadata(
   args: z.infer<typeof updateMetadataSchema>,
 ): Promise<McpTextResponse> {
-  try {
+  return safeCall(async () => {
     const project = await getProject();
     await project.updateObjectMetadata(args.bucket, args.key, args.metadata);
     return ok(`Metadata updated for "${args.bucket}/${args.key}":\n${JSON.stringify(args.metadata, null, 2)}`);
-  } catch (err) {
-    return errorResponse(err);
-  }
+  });
 }

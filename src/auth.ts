@@ -77,15 +77,25 @@ export async function getProject(): Promise<ProjectResultStruct> {
   return _project;
 }
 
-export function getAccess(): AccessResultStruct | null {
+// ---------------------------------------------------------------------------
+// requireAccess — initializes the connection if needed and returns the
+// AccessResultStruct directly.  Use this in tools that need the access grant
+// (e.g. edge/sharing tools).
+// ---------------------------------------------------------------------------
+
+export async function requireAccess(): Promise<AccessResultStruct> {
+  await getProject(); // ensures _access is populated
+  if (!_access) throw new Error('Not connected to Storj. No access grant was resolved.');
   return _access;
 }
 
 // ---------------------------------------------------------------------------
-// Graceful shutdown — close project on process exit
+// Graceful shutdown — exported so index.ts can wire it to process signals.
+// Keeping signal handler registration in index.ts maintains SRP: auth.ts
+// manages connection state, index.ts manages process lifecycle.
 // ---------------------------------------------------------------------------
 
-async function shutdown(): Promise<void> {
+export async function shutdown(): Promise<void> {
   if (_project && _project.isOpen) {
     try {
       await _project.close();
@@ -95,6 +105,3 @@ async function shutdown(): Promise<void> {
     }
   }
 }
-
-process.on('SIGINT', () => { void shutdown().then(() => process.exit(0)); });
-process.on('SIGTERM', () => { void shutdown().then(() => process.exit(0)); });

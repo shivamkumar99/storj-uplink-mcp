@@ -4,20 +4,44 @@ MCP server for [Storj](https://storj.io) decentralized storage — use Storj dir
 
 ## Quick Start
 
-### Step 1 — Run the setup wizard
+### Step 1 — Install and run the setup wizard
 
+#### Global install:
 ```bash
-npx storj-uplink-mcp
+npm install -g storj-uplink-mcp   # Install globally
+storj-uplink-mcp-setup            # Run setup wizard
+```
+
+#### Local install:
+```bash
+npm install storj-uplink-mcp      # Install locally
+npx storj-uplink-mcp-setup        # Run setup wizard (recommended)
+# Or:
+./node_modules/.bin/storj-uplink-mcp-setup
 ```
 
 The wizard will ask for your Storj credentials (Access Grant or Satellite + API Key + Passphrase) and save them **encrypted** on your machine. You only need to do this once.
 
 > **Get an Access Grant:** Log in to [Storj Console](https://console.storj.io) → Access → Create Access Grant → select permissions → copy the grant string.
 
+
 ### Step 2 — Add to your AI client config
 
-**Claude Desktop** (`~/Library/Application Support/Claude/claude_desktop_config.json` on macOS, `%APPDATA%\Claude\claude_desktop_config.json` on Windows):
+#### Claude Desktop
+Edit `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) or `%APPDATA%\Claude\claude_desktop_config.json` (Windows):
 
+```json
+{
+  "mcpServers": {
+    "storj": {
+      "command": "storj-uplink-mcp",
+      "args": []
+    }
+  }
+}
+```
+
+If you installed globally, use `"command": "storj-uplink-mcp"`. If you prefer npx, use:
 ```json
 {
   "mcpServers": {
@@ -29,24 +53,26 @@ The wizard will ask for your Storj credentials (Access Grant or Satellite + API 
 }
 ```
 
-**Cursor** (`~/.cursor/mcp.json`):
-
+#### Cursor
+Edit `~/.cursor/mcp.json`:
 ```json
 {
   "mcpServers": {
     "storj": {
-      "command": "npx",
-      "args": ["storj-uplink-mcp"]
+      "command": "storj-uplink-mcp",
+      "args": []
     }
   }
 }
 ```
 
-**Windsurf** (`~/.windsurf/mcp.json`): same format as above.
+#### Windsurf
+Edit `~/.windsurf/mcp.json` (same format as above).
+
 
 ### Step 3 — Restart your AI client
 
-Fully quit and reopen the app. Then try:
+Fully quit and reopen Claude, Cursor, or Windsurf. Then try:
 
 > *"List my Storj buckets"*
 > *"Upload this text as notes/todo.txt in my bucket"*
@@ -90,15 +116,20 @@ Env vars take priority over the config file.
 
 ## Managing Credentials
 
+#### Global install:
 ```bash
-# Reconfigure or replace credentials
-npx storj-uplink-mcp
+storj-uplink-mcp-setup            # Setup/reconfigure
+storj-uplink-mcp-setup --status   # Check credential source
+storj-uplink-mcp-setup --reset    # Delete saved config
+```
 
-# Check which credential source is active (never shows secrets)
-npx storj-uplink-mcp --status
-
-# Delete saved config (clean slate)
-npx storj-uplink-mcp-setup --reset
+#### Local install:
+```bash
+npx storj-uplink-mcp-setup            # Setup/reconfigure
+npx storj-uplink-mcp-setup --status   # Check credential source
+npx storj-uplink-mcp-setup --reset    # Delete saved config
+# Or:
+./node_modules/.bin/storj-uplink-mcp-setup --reset
 ```
 
 Credentials are stored encrypted at `~/.storj-mcp/config.json` using AES-256-GCM with a machine-specific key. The file is only readable by your user account (`chmod 600`).
@@ -136,4 +167,3 @@ Credentials are stored encrypted at `~/.storj-mcp/config.json` using AES-256-GCM
 ## License
 
 MIT
-# storj-uplink-mcp

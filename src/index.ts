@@ -9,6 +9,15 @@
 
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { createServer } from './server.js';
+import { shutdown } from './auth.js';
+
+// ---------------------------------------------------------------------------
+// Process lifecycle — signal handlers live here (SRP: index owns process
+// lifecycle; auth.ts owns connection state)
+// ---------------------------------------------------------------------------
+
+process.on('SIGINT', () => { void shutdown().then(() => process.exit(0)); });
+process.on('SIGTERM', () => { void shutdown().then(() => process.exit(0)); });
 
 async function main(): Promise<void> {
   const server = createServer();

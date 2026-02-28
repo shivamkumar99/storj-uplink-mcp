@@ -1,15 +1,16 @@
 import { z } from 'zod';
 import { edgeRegisterAccess, edgeJoinShareUrl, EdgeRegions } from 'storj-uplink-nodejs';
-import { getProject, getAccess } from '../auth.js';
-import { ok, errorResponse, type McpTextResponse } from '../utils.js';
+import { requireAccess } from '../auth.js';
+import { ok, safeCall, type McpTextResponse } from '../utils.js';
+import { bucketField, keyField } from './schemas.js';
 
 // ---------------------------------------------------------------------------
 // generate_share_url — create a public linkshare URL for an object
 // ---------------------------------------------------------------------------
 
 export const generateShareUrlSchema = z.object({
-  bucket: z.string().min(1).describe('Bucket name'),
-  key: z.string().min(1).describe('Object key (path)'),
+  bucket: bucketField,
+  key: keyField,
   region: z
     .enum(['US1', 'EU1', 'AP1'])
     .optional()
@@ -20,16 +21,11 @@ export const generateShareUrlSchema = z.object({
     .describe('If true, URL serves the file directly (for images, videos). Default: true'),
 });
 
-export async function generateShareUrl(
+export function generateShareUrl(
   args: z.infer<typeof generateShareUrlSchema>,
 ): Promise<McpTextResponse> {
-  try {
-    // Ensure auth is initialized
-    await getProject();
-    const access = getAccess();
-    if (!access) {
-      return errorResponse(new Error('Not connected to Storj. Try listing buckets first.'));
-    }
+  return safeCall(async () => {
+    const access = await requireAccess();
 
     const region = args.region ?? 'US1';
     const regionConfig = EdgeRegions[region];
@@ -55,9 +51,7 @@ export async function generateShareUrl(
     );
 
     return ok(`Share URL for "${args.bucket}/${args.key}":\n${url}`);
-  } catch (err) {
-    return errorResponse(err);
-  }
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -65,7 +59,7 @@ export async function generateShareUrl(
 // ---------------------------------------------------------------------------
 
 export const shareAccessSchema = z.object({
-  bucket: z.string().min(1).describe('Bucket to grant access to'),
+  bucket: bucketField.describe('Bucket to grant access to'),
   prefix: z.string().optional().describe('Limit access to objects with this prefix. Omit for full bucket access'),
   allow_download: z.boolean().optional().describe('Allow downloading objects. Default: true'),
   allow_upload: z.boolean().optional().describe('Allow uploading objects. Default: false'),
@@ -78,15 +72,11 @@ export const shareAccessSchema = z.object({
     .describe('Access grant expires after this many hours. Omit for no expiry'),
 });
 
-export async function shareAccess(
+export function shareAccess(
   args: z.infer<typeof shareAccessSchema>,
 ): Promise<McpTextResponse> {
-  try {
-    await getProject();
-    const access = getAccess();
-    if (!access) {
-      return errorResponse(new Error('Not connected to Storj. Try listing buckets first.'));
-    }
+  return safeCall(async () => {
+    const access = await requireAccess();
 
     const notAfter = args.expires_in_hours
       ? new Date(Date.now() + args.expires_in_hours * 3600 * 1000)
@@ -122,9 +112,7 @@ export async function shareAccess(
         `  Expires: ${notAfter ? notAfter.toISOString() : 'never'}\n\n` +
         `Access Grant:\n${serialized}`,
     );
-  } catch (err) {
-    return errorResponse(err);
-  }
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -133,13 +121,9 @@ export async function shareAccess(
 
 export const serializeAccessSchema = z.object({});
 
-export async function serializeAccess(): Promise<McpTextResponse> {
-  try {
-    await getProject();
-    const access = getAccess();
-    if (!access) {
-      return errorResponse(new Error('Not connected to Storj. Try listing buckets first.'));
-    }
+export function serializeAccess(): Promise<McpTextResponse> {
+  return safeCall(async () => {
+    const access = await requireAccess();
 
     const serialized = await access.serialize();
     const satellite = await access.satelliteAddress();
@@ -149,7 +133,5 @@ export async function serializeAccess(): Promise<McpTextResponse> {
         `  Satellite: ${satellite}\n\n` +
         `Serialized grant (keep this secret):\n${serialized}`,
     );
-  } catch (err) {
-    return errorResponse(err);
-  }
+  });
 }
