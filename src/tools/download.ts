@@ -3,10 +3,9 @@ import path from 'node:path';
 import { z } from 'zod';
 import { getProject } from '../auth.js';
 import { ok, safeCall, formatBytes, type McpTextResponse } from '../utils.js';
-import { bucketField, keyField } from './schemas.js';
+import { createProgress, type ProgressReporter } from '../progress.js';
+import { bucketField, keyField, chunkSizeField, DEFAULT_DOWNLOAD_CHUNK } from './schemas.js';
 import type { ProjectResultStruct, DownloadResultStruct } from 'storj-uplink-nodejs';
-
-const READ_CHUNK = 64 * 1024; // 64 KB read buffer
 
 // ---------------------------------------------------------------------------
 // drainDownload — read a Storj download handle chunk-by-chunk.
@@ -17,29 +16,41 @@ const READ_CHUNK = 64 * 1024; // 64 KB read buffer
 // The Storj SDK signals EOF by *throwing* an error that has a `bytesRead`
 // property attached.  This helper encapsulates that quirk so neither readAll
 // nor downloadToFile ever has to deal with it directly.
+//
+// If a ProgressReporter is provided, it receives update() calls with the
+// running byte total after every chunk.
 // ---------------------------------------------------------------------------
 
 async function drainDownload(
   download: DownloadResultStruct,
   onChunk: (buf: Buffer, bytesRead: number) => void,
-): Promise<void> {
-  const buf = Buffer.alloc(READ_CHUNK);
+  progress?: ProgressReporter,
+  totalSize?: number,
+  readChunk: number = DEFAULT_DOWNLOAD_CHUNK,
+): Promise<number> {
+  const buf = Buffer.alloc(readChunk);
+  let downloaded = 0;
   try {
     while (true) {
       let bytesRead: number;
       try {
-        ({ bytesRead } = await download.read(buf, READ_CHUNK));
+        ({ bytesRead } = await download.read(buf, readChunk));
       } catch (err: unknown) {
         // EOF arrives as a thrown error with an optional bytesRead property
         const e = err as Record<string, unknown>;
         bytesRead = typeof e['bytesRead'] === 'number' ? (e['bytesRead'] as number) : 0;
       }
-      if (bytesRead > 0) onChunk(buf, bytesRead);
-      if (bytesRead < READ_CHUNK) break;
+      if (bytesRead > 0) {
+        onChunk(buf, bytesRead);
+        downloaded += bytesRead;
+        if (progress) progress.update(downloaded, totalSize ?? 0);
+      }
+      if (bytesRead < readChunk) break;
     }
   } finally {
     await download.close();
   }
+  return downloaded;
 }
 
 // ---------------------------------------------------------------------------
@@ -53,10 +64,22 @@ async function readAll(
   project: ProjectResultStruct,
   bucket: string,
   key: string,
+  chunkSize: number = DEFAULT_DOWNLOAD_CHUNK,
 ): Promise<Buffer> {
+  const progress = createProgress(`Downloading "${key}" (chunk ${formatBytes(chunkSize)})`);
+  // Get content length from object info for progress percentage
+  const info = await project.statObject(bucket, key);
+  const totalSize = info.system.contentLength;
   const download = await project.downloadObject(bucket, key);
   const chunks: Buffer[] = [];
-  await drainDownload(download, (buf, n) => chunks.push(Buffer.from(buf.subarray(0, n))));
+  const downloaded = await drainDownload(
+    download,
+    (buf, n) => chunks.push(Buffer.from(buf.subarray(0, n))),
+    progress,
+    totalSize,
+    chunkSize,
+  );
+  progress.done(`Downloaded "${key}" (${formatBytes(downloaded)})`);
   return Buffer.concat(chunks);
 }
 
@@ -74,19 +97,28 @@ async function downloadToFile(
   bucket: string,
   key: string,
   filePath: string,
+  chunkSize: number = DEFAULT_DOWNLOAD_CHUNK,
 ): Promise<number> {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  const progress = createProgress(`Downloading "${key}" (chunk ${formatBytes(chunkSize)})`);
+  // Get content length from object info for progress percentage
+  const info = await project.statObject(bucket, key);
+  const totalSize = info.system.contentLength;
   const download = await project.downloadObject(bucket, key);
   const fd = fs.openSync(filePath, 'w');
   let totalBytes = 0;
   try {
-    await drainDownload(download, (buf, n) => {
-      fs.writeSync(fd, buf, 0, n);
-      totalBytes += n;
-    });
+    totalBytes = await drainDownload(
+      download,
+      (buf, n) => { fs.writeSync(fd, buf, 0, n); },
+      progress,
+      totalSize,
+      chunkSize,
+    );
   } finally {
     fs.closeSync(fd);
   }
+  progress.done(`Downloaded "${key}" → "${filePath}" (${formatBytes(totalBytes)})`);
   return totalBytes;
 }
 
@@ -97,6 +129,7 @@ async function downloadToFile(
 export const downloadTextSchema = z.object({
   bucket: bucketField,
   key: keyField.describe('Object key (path) to download'),
+  chunk_size: chunkSizeField,
 });
 
 export function downloadText(
@@ -104,7 +137,7 @@ export function downloadText(
 ): Promise<McpTextResponse> {
   return safeCall(async () => {
     const project = await getProject();
-    const data = await readAll(project, args.bucket, args.key);
+    const data = await readAll(project, args.bucket, args.key, args.chunk_size);
     const text = data.toString('utf8');
     return ok(`Content of "${args.bucket}/${args.key}" (${formatBytes(data.length)}):\n\n${text}`);
   });
@@ -121,6 +154,7 @@ export const downloadFileSchema = z.object({
     .string()
     .min(1)
     .describe('Local path where the file will be saved, e.g. "/tmp/photo.jpg"'),
+  chunk_size: chunkSizeField,
 });
 
 export function downloadFile(
@@ -128,7 +162,9 @@ export function downloadFile(
 ): Promise<McpTextResponse> {
   return safeCall(async () => {
     const project = await getProject();
-    const totalBytes = await downloadToFile(project, args.bucket, args.key, args.file_path);
+    const totalBytes = await downloadToFile(
+      project, args.bucket, args.key, args.file_path, args.chunk_size,
+    );
     return ok(
       `Downloaded "${args.bucket}/${args.key}" → "${args.file_path}" (${formatBytes(totalBytes)})`,
     );

@@ -2,10 +2,9 @@ import fs from 'node:fs';
 import { z } from 'zod';
 import { getProject } from '../auth.js';
 import { ok, safeCall, formatBytes, type McpTextResponse } from '../utils.js';
-import { bucketField, metadataField } from './schemas.js';
+import { createProgress } from '../progress.js';
+import { bucketField, metadataField, chunkSizeField, DEFAULT_UPLOAD_CHUNK } from './schemas.js';
 import type { ProjectResultStruct, UploadResultStruct } from 'storj-uplink-nodejs';
-
-const CHUNK_SIZE = 1024 * 1024; // 1 MB
 
 // ---------------------------------------------------------------------------
 // runUpload — owns the upload lifecycle: open → optional metadata → write → commit.
@@ -48,16 +47,20 @@ async function uploadFromBuffer(
   key: string,
   data: Buffer,
   metadata?: Record<string, string>,
+  chunkSize: number = DEFAULT_UPLOAD_CHUNK,
 ): Promise<void> {
+  const progress = createProgress(`Uploading "${key}" (chunk ${formatBytes(chunkSize)})`);
   await runUpload(project, bucket, key, metadata, async (upload) => {
     let offset = 0;
     while (offset < data.length) {
-      const end = Math.min(offset + CHUNK_SIZE, data.length);
+      const end = Math.min(offset + chunkSize, data.length);
       const chunk = data.subarray(offset, end);
       await upload.write(chunk, chunk.length);
       offset = end;
+      progress.update(offset, data.length);
     }
   });
+  progress.done(`Uploaded "${key}" (${formatBytes(data.length)})`);
 }
 
 // ---------------------------------------------------------------------------
@@ -73,15 +76,21 @@ async function uploadFromFile(
   key: string,
   filePath: string,
   metadata?: Record<string, string>,
+  chunkSize: number = DEFAULT_UPLOAD_CHUNK,
 ): Promise<number> {
+  // Get file size upfront for progress percentage
+  const fileSize = fs.statSync(filePath).size;
+  const progress = createProgress(`Uploading "${key}" (chunk ${formatBytes(chunkSize)})`);
   let totalBytes = 0;
   await runUpload(project, bucket, key, metadata, async (upload) => {
-    for await (const chunk of fs.createReadStream(filePath, { highWaterMark: CHUNK_SIZE })) {
+    for await (const chunk of fs.createReadStream(filePath, { highWaterMark: chunkSize })) {
       const buf = chunk as Buffer;
       await upload.write(buf, buf.length);
       totalBytes += buf.length;
+      progress.update(totalBytes, fileSize);
     }
   });
+  progress.done(`Uploaded "${key}" (${formatBytes(totalBytes)})`);
   return totalBytes;
 }
 
@@ -94,6 +103,7 @@ export const uploadTextSchema = z.object({
   key: z.string().min(1).describe('Object key (path), e.g. "notes/hello.txt"'),
   content: z.string().describe('Text content to upload'),
   metadata: metadataField,
+  chunk_size: chunkSizeField,
 });
 
 export function uploadText(
@@ -102,7 +112,7 @@ export function uploadText(
   return safeCall(async () => {
     const project = await getProject();
     const data = Buffer.from(args.content, 'utf8');
-    await uploadFromBuffer(project, args.bucket, args.key, data, args.metadata);
+    await uploadFromBuffer(project, args.bucket, args.key, data, args.metadata, args.chunk_size);
     return ok(`Uploaded "${args.key}" to bucket "${args.bucket}" (${formatBytes(data.length)})`);
   });
 }
@@ -116,6 +126,7 @@ export const uploadFileSchema = z.object({
   key: z.string().min(1).describe('Object key (path) on Storj, e.g. "backups/photo.jpg"'),
   file_path: z.string().min(1).describe('Absolute or relative path to the local file to upload'),
   metadata: metadataField,
+  chunk_size: chunkSizeField,
 });
 
 export function uploadFile(
@@ -123,7 +134,9 @@ export function uploadFile(
 ): Promise<McpTextResponse> {
   return safeCall(async () => {
     const project = await getProject();
-    const totalBytes = await uploadFromFile(project, args.bucket, args.key, args.file_path, args.metadata);
+    const totalBytes = await uploadFromFile(
+      project, args.bucket, args.key, args.file_path, args.metadata, args.chunk_size,
+    );
     return ok(`Uploaded "${args.file_path}" → "${args.bucket}/${args.key}" (${formatBytes(totalBytes)})`);
   });
 }

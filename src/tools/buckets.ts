@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { getProject } from '../auth.js';
 import { ok, safeCall, formatTimestamp, type McpTextResponse } from '../utils.js';
+import { createProgress } from '../progress.js';
 import { bucketField } from './schemas.js';
 
 // ---------------------------------------------------------------------------
@@ -57,7 +58,10 @@ export function deleteBucket(
   return safeCall(async () => {
     const project = await getProject();
     if (args.with_objects) {
+      const progress = createProgress(`Deleting bucket "${args.name}" with all objects`);
+      progress.update(0, 0, 'deleting objects…');
       await project.deleteBucketWithObjects(args.name);
+      progress.done(`Bucket "${args.name}" and all its objects have been deleted`);
       return ok(`Bucket "${args.name}" and all its objects have been deleted.`);
     }
     await project.deleteBucket(args.name);

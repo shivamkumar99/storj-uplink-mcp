@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { getProject } from '../auth.js';
 import { ok, safeCall, formatBytes, formatTimestamp, type McpTextResponse } from '../utils.js';
+import { createProgress } from '../progress.js';
 import {
   bucketField,
   keyField,
@@ -26,6 +27,8 @@ export function listObjects(
 ): Promise<McpTextResponse> {
   return safeCall(async () => {
     const project = await getProject();
+    const progress = createProgress(`Listing objects in "${args.bucket}"`);
+    progress.update(0, 0, 'querying…');
     const objects = await project.listObjects(args.bucket, {
       prefix: args.prefix,
       recursive: args.recursive ?? false,
@@ -35,6 +38,7 @@ export function listObjects(
     if (objects.length === 0) {
       return ok(`No objects found in "${args.bucket}"${args.prefix ? `/${args.prefix}` : ''}.`);
     }
+    progress.done(`Listed ${objects.length} objects in "${args.bucket}"`);
     const rows = objects.map((o) => {
       if (o.isPrefix) return `  📁 ${o.key}`;
       return `  📄 ${o.key}  (${formatBytes(o.system.contentLength)}, created: ${formatTimestamp(o.system.created)})`;

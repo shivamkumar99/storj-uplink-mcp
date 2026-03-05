@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { edgeRegisterAccess, edgeJoinShareUrl, EdgeRegions } from 'storj-uplink-nodejs';
 import { requireAccess } from '../auth.js';
 import { ok, safeCall, type McpTextResponse } from '../utils.js';
+import { createProgress } from '../progress.js';
 import { bucketField, keyField } from './schemas.js';
 
 // ---------------------------------------------------------------------------
@@ -26,16 +27,19 @@ export function generateShareUrl(
 ): Promise<McpTextResponse> {
   return safeCall(async () => {
     const access = await requireAccess();
+    const progress = createProgress(`Generating share URL for "${args.key}"`);
 
     const region = args.region ?? 'US1';
     const regionConfig = EdgeRegions[region];
 
     // Create a read-only, public, prefix-scoped access for this object
+    progress.update(0, 0, 'creating restricted access…');
     const sharedAccess = await access.share(
       { allowDownload: true, allowList: true },
       [{ bucket: args.bucket, prefix: args.key }],
     );
 
+    progress.update(0, 0, 'registering with edge service…');
     const credentials = await edgeRegisterAccess(
       { authServiceAddress: regionConfig.authService },
       sharedAccess._nativeHandle,
@@ -49,6 +53,8 @@ export function generateShareUrl(
       args.key,
       { raw: args.raw ?? true },
     );
+
+    progress.done(`Share URL generated for "${args.key}"`);
 
     return ok(`Share URL for "${args.bucket}/${args.key}":\n${url}`);
   });
