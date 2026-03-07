@@ -7,7 +7,23 @@
 [![Node.js](https://img.shields.io/node/v/storj-uplink-mcp.svg)](https://nodejs.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 
-MCP server for [Storj](https://storj.io) decentralized storage — use Storj directly from Claude Desktop, Cursor, Windsurf, and any MCP-compatible AI client.
+**MCP server for [Storj](https://storj.io) decentralized storage** — upload, download, list, share, and manage files on Storj using natural language from Claude Desktop, Cursor, Windsurf, VS Code Copilot, and any MCP-compatible AI client.
+
+> *"Upload this file to my photos bucket"*  
+> *"List all objects in my backup bucket"*  
+> *"Generate a share link for report.pdf"*
+
+## Features
+
+- 🪣 **Bucket management** — create, list, delete (single or batch with glob patterns)
+- 📁 **Object operations** — upload, download, copy, move, delete, stat, update metadata
+- 🗑️ **Batch delete** — delete multiple buckets or objects by name list, prefix, or glob pattern (`*.log`, `tmp-*`)
+- 🔗 **Sharing** — generate public URLs, create restricted access grants (time-limited, prefix-scoped, read-only)
+- ⚡ **Configurable chunk size** — tune upload/download buffer size (4 KB – 64 MB) for optimal performance
+- 📊 **Progress reporting** — real-time progress notifications for long-running operations
+- 🔐 **Encrypted credentials** — AES-256-GCM encryption with machine-specific key, `chmod 600`
+- 🖥️ **Multi-client** — works with Claude Desktop, Cursor, Windsurf, VS Code Copilot, and any MCP client
+- 🌍 **Cross-platform** — macOS, Linux, Windows
 
 ## Quick Start
 
@@ -261,11 +277,26 @@ npm list -g storj-uplink-mcp
 
 ---
 
+## Why Storj?
+
+[Storj](https://storj.io) is a decentralized cloud storage platform that provides:
+
+- **S3-compatible** — drop-in replacement for Amazon S3
+- **End-to-end encryption** — data is encrypted client-side before upload
+- **Distributed** — files are split, encrypted, and stored across a global network of nodes
+- **No egress fees** — predictable pricing with no surprise bandwidth charges
+- **99.95% availability** — built-in redundancy across thousands of nodes
+- **Open source** — fully open-source storage infrastructure
+
 ## Requirements
 
-- Node.js 18+
-- A [Storj account](https://storj.io) with an API key or Access Grant
+- **Node.js 18+**
+- A [Storj account](https://storj.io) with an API key or Access Grant (free tier available — 25 GB storage, 25 GB bandwidth/month)
+
+## Contributing
+
+Issues and pull requests are welcome! See the [GitHub repository](https://github.com/shivamkumar99/storj-uplink-mcp).
 
 ## License
 
-MIT
+[MIT](https://opensource.org/licenses/MIT) © Shivam Kumar

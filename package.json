@@ -1,7 +1,7 @@
 {
   "name": "storj-uplink-mcp",
-  "version": "0.1.0-beta.6",
-  "description": "MCP server for Storj decentralized storage — use Storj with Claude, Cursor, Windsurf and any MCP client",
+  "version": "0.1.0-beta.7",
+  "description": "MCP server for Storj decentralized storage — use Storj directly from Claude Desktop, Cursor, Windsurf, VS Code Copilot, and any MCP-compatible AI client. Upload, download, list, share, and manage files on Storj with natural language.",
   "type": "module",
   "bin": {
     "storj-uplink-mcp": "./dist/index.js",
@@ -19,6 +19,15 @@
     "postinstall": "node scripts/postinstall.js",
     "prepublishOnly": "npm run build"
   },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/shivamkumar99/storj-uplink-mcp.git"
+  },
+  "bugs": {
+    "url": "https://github.com/shivamkumar99/storj-uplink-mcp/issues"
+  },
+  "homepage": "https://github.com/shivamkumar99/storj-uplink-mcp#readme",
+  "author": "Shivam Kumar",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.15.0",
     "storj-uplink-nodejs": "^0.1.0-beta.23",
@@ -34,9 +43,19 @@
     "model-context-protocol",
     "storage",
     "decentralized",
+    "cloud-storage",
+    "object-storage",
+    "s3-alternative",
     "claude",
     "cursor",
-    "windsurf"
+    "windsurf",
+    "vscode",
+    "copilot",
+    "ai",
+    "llm",
+    "upload",
+    "download",
+    "file-sharing"
   ],
   "license": "MIT",
   "engines": {
