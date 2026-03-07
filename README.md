@@ -1,5 +1,12 @@
 # storj-uplink-mcp
 
+[![CI](https://github.com/shivamkumar99/storj-uplink-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/shivamkumar99/storj-uplink-mcp/actions/workflows/ci.yml)
+[![Release](https://github.com/shivamkumar99/storj-uplink-mcp/actions/workflows/release.yml/badge.svg)](https://github.com/shivamkumar99/storj-uplink-mcp/actions/workflows/release.yml)
+[![npm version](https://img.shields.io/npm/v/storj-uplink-mcp.svg)](https://www.npmjs.com/package/storj-uplink-mcp)
+[![npm downloads](https://img.shields.io/npm/dm/storj-uplink-mcp.svg)](https://www.npmjs.com/package/storj-uplink-mcp)
+[![Node.js](https://img.shields.io/node/v/storj-uplink-mcp.svg)](https://nodejs.org)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+
 MCP server for [Storj](https://storj.io) decentralized storage — use Storj directly from Claude Desktop, Cursor, Windsurf, and any MCP-compatible AI client.
 
 ## Quick Start
