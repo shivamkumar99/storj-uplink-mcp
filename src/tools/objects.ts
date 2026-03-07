@@ -11,6 +11,50 @@ import {
   dstKeyField,
   metadataField,
 } from './schemas.js';
+import type { ProjectResultStruct } from 'storj-uplink-nodejs';
+
+/**
+ * Match a key against a glob-like pattern.
+ * Supports: * (any chars), ? (single char), ** (any path).
+ */
+function matchPattern(key: string, pattern: string): boolean {
+  const escaped = pattern
+    .replace(/([.+^${}()|[\]\\])/g, '\\$1')
+    .replace(/\*\*/g, '⧫')         // placeholder for **
+    .replace(/\*/g, '[^/]*')        // * matches within one segment
+    .replace(/⧫/g, '.*')           // ** matches across segments
+    .replace(/\?/g, '.');
+  return new RegExp(`^${escaped}$`).test(key);
+}
+
+/**
+ * Resolve which object keys to delete.
+ * Returns the matched keys sorted alphabetically.
+ */
+async function resolveObjectKeys(
+  project: ProjectResultStruct,
+  bucket: string,
+  keys?: string[],
+  prefix?: string,
+  pattern?: string,
+): Promise<string[]> {
+  // Explicit key list — return as-is
+  if (keys && keys.length > 0) return [...keys];
+
+  // Prefix and/or pattern — list objects then filter
+  const objects = await project.listObjects(bucket, {
+    prefix: prefix ?? '',
+    recursive: true,
+    system: false,
+    custom: false,
+  });
+
+  let names = objects.filter((o) => !o.isPrefix).map((o) => o.key);
+  if (pattern) {
+    names = names.filter((k) => matchPattern(k, pattern));
+  }
+  return names.sort();
+}
 
 // ---------------------------------------------------------------------------
 // list_objects
@@ -153,5 +197,89 @@ export function updateMetadata(
     const project = await getProject();
     await project.updateObjectMetadata(args.bucket, args.key, args.metadata);
     return ok(`Metadata updated for "${args.bucket}/${args.key}":\n${JSON.stringify(args.metadata, null, 2)}`);
+  });
+}
+
+// ---------------------------------------------------------------------------
+// delete_objects — batch delete multiple objects by list, prefix, or pattern
+// ---------------------------------------------------------------------------
+
+export const deleteObjectsSchema = z.object({
+  bucket: bucketField,
+  keys: z
+    .array(z.string().min(1))
+    .optional()
+    .describe('Explicit list of object keys to delete, e.g. ["photos/a.jpg", "photos/b.jpg"]'),
+  prefix: z
+    .string()
+    .optional()
+    .describe('Delete all objects under this prefix, e.g. "logs/2024/" deletes all objects starting with that path'),
+  pattern: z
+    .string()
+    .optional()
+    .describe('Glob pattern to match object keys, e.g. "*.log", "photos/*.jpg", "data/**/temp-*". Supports * (within folder), ** (across folders), ? (single char)'),
+  confirm_all: z
+    .boolean()
+    .optional()
+    .describe('Required when neither keys, prefix, nor pattern is provided (i.e. delete ALL objects in the bucket). Set to true to confirm.'),
+});
+
+export function deleteObjects(
+  args: z.infer<typeof deleteObjectsSchema>,
+): Promise<McpTextResponse> {
+  return safeCall(async () => {
+    // Safety: if no keys, no prefix, and no pattern → deleting ALL objects, require confirm
+    if (!args.keys?.length && !args.prefix && !args.pattern && !args.confirm_all) {
+      return ok(
+        `WARNING: No keys, prefix, or pattern specified — this would delete ALL objects in bucket "${args.bucket}". ` +
+        'Set confirm_all=true to proceed, or provide keys, a prefix, or a pattern.',
+      );
+    }
+
+    const project = await getProject();
+    const targets = await resolveObjectKeys(
+      project, args.bucket, args.keys, args.prefix, args.pattern,
+    );
+
+    if (targets.length === 0) {
+      const filter = args.pattern
+        ? `pattern "${args.pattern}"`
+        : args.prefix
+          ? `prefix "${args.prefix}"`
+          : 'the specified filters';
+      return ok(`No objects matched ${filter} in bucket "${args.bucket}".`);
+    }
+
+    const progress = createProgress(`Deleting ${targets.length} object(s) from "${args.bucket}"`);
+    const deleted: string[] = [];
+    const failed: Array<{ key: string; error: string }> = [];
+
+    for (let i = 0; i < targets.length; i++) {
+      const key = targets[i];
+      progress.update(i, targets.length, `deleting "${key}"…`);
+      try {
+        await project.deleteObject(args.bucket, key);
+        deleted.push(key);
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        failed.push({ key, error: msg });
+      }
+    }
+
+    progress.done(`Deleted ${deleted.length}/${targets.length} object(s) from "${args.bucket}"`);
+
+    const lines: string[] = [];
+    lines.push(`Deleted ${deleted.length} of ${targets.length} object(s) from "${args.bucket}":`);
+    if (deleted.length > 0) {
+      lines.push('');
+      lines.push('✅ Deleted:');
+      for (const k of deleted) lines.push(`  - ${k}`);
+    }
+    if (failed.length > 0) {
+      lines.push('');
+      lines.push('❌ Failed:');
+      for (const f of failed) lines.push(`  - ${f.key}: ${f.error}`);
+    }
+    return ok(lines.join('\n'));
   });
 }

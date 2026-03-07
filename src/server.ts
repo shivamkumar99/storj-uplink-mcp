@@ -5,12 +5,14 @@ import {
   listBucketsSchema, listBuckets,
   createBucketSchema, createBucket,
   deleteBucketSchema, deleteBucket,
+  deleteBucketsSchema, deleteBuckets,
 } from './tools/buckets.js';
 
 import {
   listObjectsSchema, listObjects,
   statObjectSchema, statObject,
   deleteObjectSchema, deleteObject,
+  deleteObjectsSchema, deleteObjects,
   copyObjectSchema, copyObject,
   moveObjectSchema, moveObject,
   updateMetadataSchema, updateMetadata,
@@ -58,6 +60,10 @@ const TOOLS: ToolRegistrar[] = [
     'Delete a Storj bucket. By default the bucket must be empty; set with_objects=true to delete all contents too.',
     deleteBucketSchema.shape, (args) => deleteBucket(args)),
 
+  (s) => s.tool('delete_buckets',
+    'Batch-delete multiple buckets by name list or glob pattern (e.g. "logs-*", "test-*"). Shows progress and reports per-bucket success/failure.',
+    deleteBucketsSchema.shape, (args) => deleteBuckets(args)),
+
   // ── Object tools ──────────────────────────────────────────────────────────
 
   (s) => s.tool('list_objects',
@@ -71,6 +77,10 @@ const TOOLS: ToolRegistrar[] = [
   (s) => s.tool('delete_object',
     'Delete an object from a Storj bucket',
     deleteObjectSchema.shape, (args) => deleteObject(args)),
+
+  (s) => s.tool('delete_objects',
+    'Batch-delete multiple objects by key list, prefix, or glob pattern (e.g. "*.log", "photos/**/*.tmp"). Shows progress and reports per-object success/failure.',
+    deleteObjectsSchema.shape, (args) => deleteObjects(args)),
 
   (s) => s.tool('copy_object',
     'Copy an object to a new key or bucket on Storj',

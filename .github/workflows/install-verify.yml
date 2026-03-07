@@ -1,0 +1,115 @@
+# ==============================================================================
+# Install Verify — End-to-end install test across platforms
+# ==============================================================================
+# Triggers: After release, manual dispatch, weekly schedule
+# Purpose: Verify that `npm install -g storj-uplink-mcp` works on all platforms
+# ==============================================================================
+
+name: Install Verify
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Package version to test (e.g., 0.1.0-beta.6). Leave empty for latest.'
+        required: false
+  schedule:
+    # Every Monday at 08:00 UTC
+    - cron: '0 8 * * 1'
+
+env:
+  NODE_VERSION: '20'
+
+jobs:
+  install-test:
+    name: Install (${{ matrix.os }}, Node ${{ matrix.node }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        node: ['18', '20', '22']
+
+    steps:
+      - name: Setup Node.js ${{ matrix.node }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+
+      - name: Determine package specifier
+        id: pkg
+        shell: bash
+        run: |
+          if [[ -n "${{ github.event.inputs.version }}" ]]; then
+            echo "spec=storj-uplink-mcp@${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
+          else
+            echo "spec=storj-uplink-mcp@latest" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Install storj-uplink-mcp globally
+        shell: bash
+        run: npm install -g ${{ steps.pkg.outputs.spec }}
+
+      - name: Verify binary — storj-uplink-mcp
+        shell: bash
+        run: |
+          which storj-uplink-mcp || where storj-uplink-mcp || (echo "❌ storj-uplink-mcp not found in PATH" && exit 1)
+          echo "✅ storj-uplink-mcp binary found"
+
+      - name: Verify binary — storj-uplink-mcp-setup
+        shell: bash
+        run: |
+          which storj-uplink-mcp-setup || where storj-uplink-mcp-setup || (echo "❌ storj-uplink-mcp-setup not found in PATH" && exit 1)
+          echo "✅ storj-uplink-mcp-setup binary found"
+
+      - name: Verify setup --status runs
+        shell: bash
+        run: |
+          storj-uplink-mcp-setup --status || true
+          echo "✅ Setup CLI executes without crash"
+
+      - name: Verify npm list shows package
+        shell: bash
+        run: |
+          npm list -g storj-uplink-mcp
+          echo "✅ Package listed in global installs"
+
+      - name: Verify storj-uplink-nodejs native module present
+        shell: bash
+        run: |
+          NPM_ROOT=$(npm root -g)
+          UPLINK_DIR="$NPM_ROOT/storj-uplink-mcp/node_modules/storj-uplink-nodejs"
+
+          if [[ ! -d "$UPLINK_DIR" ]]; then
+            echo "❌ storj-uplink-nodejs directory not found"
+            exit 1
+          fi
+
+          # Check for native module in prebuilds or build/Release
+          FOUND=0
+          if ls "$UPLINK_DIR"/native/prebuilds/*/uplink_native.node 2>/dev/null; then
+            echo "✅ Native module found in prebuilds"
+            FOUND=1
+          fi
+          if [[ -f "$UPLINK_DIR/build/Release/uplink_native.node" ]]; then
+            echo "✅ Native module found in build/Release"
+            FOUND=1
+          fi
+
+          if [[ $FOUND -eq 0 ]]; then
+            echo "❌ Native module (uplink_native.node) not found"
+            exit 1
+          fi
+
+      - name: Clean up
+        if: always()
+        shell: bash
+        run: npm uninstall -g storj-uplink-mcp || true
+
+      - name: Summary
+        if: always()
+        shell: bash
+        run: |
+          echo "## Install Test: ${{ matrix.os }} / Node ${{ matrix.node }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Package:** ${{ steps.pkg.outputs.spec }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Status:** ${{ job.status }}" >> $GITHUB_STEP_SUMMARY

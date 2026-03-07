@@ -3,6 +3,43 @@ import { getProject } from '../auth.js';
 import { ok, safeCall, formatTimestamp, type McpTextResponse } from '../utils.js';
 import { createProgress } from '../progress.js';
 import { bucketField } from './schemas.js';
+import type { ProjectResultStruct } from 'storj-uplink-nodejs';
+
+/**
+ * Match a name against a filter that can be a glob-like pattern or plain string.
+ * Supports: * (any chars), ? (single char). No regex — safe for user input.
+ */
+function matchPattern(name: string, pattern: string): boolean {
+  // Convert simple glob to regex: escape everything except * and ?
+  const escaped = pattern
+    .replace(/([.+^${}()|[\]\\])/g, '\\$1')
+    .replace(/\*/g, '.*')
+    .replace(/\?/g, '.');
+  return new RegExp(`^${escaped}$`).test(name);
+}
+
+/**
+ * Resolve which bucket names to target from the user-supplied filters.
+ * Returns the matched names sorted alphabetically.
+ */
+async function resolveBucketNames(
+  project: ProjectResultStruct,
+  names?: string[],
+  pattern?: string,
+): Promise<string[]> {
+  // Explicit list — return as-is (no need to list all buckets)
+  if (names && names.length > 0) return [...names];
+
+  // Pattern — list all buckets and filter
+  if (pattern) {
+    const all = await project.listBuckets();
+    return all.map((b) => b.name).filter((n) => matchPattern(n, pattern)).sort();
+  }
+
+  // Neither — delete ALL buckets
+  const all = await project.listBuckets();
+  return all.map((b) => b.name).sort();
+}
 
 // ---------------------------------------------------------------------------
 // list_buckets
@@ -66,5 +103,89 @@ export function deleteBucket(
     }
     await project.deleteBucket(args.name);
     return ok(`Bucket "${args.name}" has been deleted.`);
+  });
+}
+
+// ---------------------------------------------------------------------------
+// delete_buckets — batch delete multiple buckets by list or pattern
+// ---------------------------------------------------------------------------
+
+export const deleteBucketsSchema = z.object({
+  names: z
+    .array(z.string().min(1))
+    .optional()
+    .describe('Explicit list of bucket names to delete, e.g. ["logs-2024", "tmp-data"]'),
+  pattern: z
+    .string()
+    .optional()
+    .describe('Glob pattern to match bucket names, e.g. "logs-*", "test-??-*", "temp*". Supports * (any chars) and ? (single char)'),
+  with_objects: z
+    .boolean()
+    .optional()
+    .describe('If true, delete each bucket and all its objects. Default: false (buckets must be empty)'),
+  confirm_all: z
+    .boolean()
+    .optional()
+    .describe('Required when neither names nor pattern is provided (i.e. delete ALL buckets). Set to true to confirm.'),
+});
+
+export function deleteBuckets(
+  args: z.infer<typeof deleteBucketsSchema>,
+): Promise<McpTextResponse> {
+  return safeCall(async () => {
+    // Safety: if no names and no pattern → deleting ALL buckets, require explicit confirm
+    if (!args.names?.length && !args.pattern && !args.confirm_all) {
+      return ok(
+        'WARNING: No names or pattern specified — this would delete ALL buckets. ' +
+        'Set confirm_all=true to proceed, or provide names or a pattern.',
+      );
+    }
+
+    const project = await getProject();
+    const targets = await resolveBucketNames(project, args.names, args.pattern);
+
+    if (targets.length === 0) {
+      return ok(
+        args.pattern
+          ? `No buckets matched the pattern "${args.pattern}".`
+          : 'No buckets found to delete.',
+      );
+    }
+
+    const progress = createProgress(`Deleting ${targets.length} bucket(s)`);
+    const deleted: string[] = [];
+    const failed: Array<{ name: string; error: string }> = [];
+
+    for (let i = 0; i < targets.length; i++) {
+      const name = targets[i];
+      progress.update(i, targets.length, `deleting "${name}"…`);
+      try {
+        if (args.with_objects) {
+          await project.deleteBucketWithObjects(name);
+        } else {
+          await project.deleteBucket(name);
+        }
+        deleted.push(name);
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        failed.push({ name, error: msg });
+      }
+    }
+
+    progress.done(`Deleted ${deleted.length}/${targets.length} bucket(s)`);
+
+    const lines: string[] = [];
+    lines.push(`Deleted ${deleted.length} of ${targets.length} bucket(s):`);
+    if (deleted.length > 0) {
+      lines.push('');
+      lines.push('✅ Deleted:');
+      for (const n of deleted) lines.push(`  - ${n}`);
+    }
+    if (failed.length > 0) {
+      lines.push('');
+      lines.push('❌ Failed:');
+      for (const f of failed) lines.push(`  - ${f.name}: ${f.error}`);
+    }
+    return ok(lines.join('\n'));
   });
 }
