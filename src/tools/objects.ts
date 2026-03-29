@@ -15,16 +15,54 @@ import type { ProjectResultStruct } from 'storj-uplink-nodejs';
 
 /**
  * Match a key against a glob-like pattern.
- * Supports: * (any chars), ? (single char), ** (any path).
+ * Supports: * (within one path segment), ? (single char), ** (any path segments).
+ *
+ * Uses iterative character matching instead of RegExp to avoid ReDoS.
  */
 function matchPattern(key: string, pattern: string): boolean {
-  const escaped = pattern
-    .replace(/([.+^${}()|[\]\\])/g, '\\$1')
-    .replace(/\*\*/g, '⧫')         // placeholder for **
-    .replace(/\*/g, '[^/]*')        // * matches within one segment
-    .replace(/⧫/g, '.*')           // ** matches across segments
-    .replace(/\?/g, '.');
-  return new RegExp(`^${escaped}$`).test(key);
+  return globMatch(key, 0, pattern, 0);
+}
+
+/** Recursive glob matcher — no RegExp, no ReDoS risk. */
+function globMatch(str: string, si: number, pat: string, pi: number): boolean {
+  while (pi < pat.length) {
+    // Handle '**' — matches across path segments (including '/')
+    if (pat[pi] === '*' && pi + 1 < pat.length && pat[pi + 1] === '*') {
+      pi += 2;
+      // Skip trailing slash after '**' if present
+      if (pi < pat.length && pat[pi] === '/') pi++;
+      if (pi === pat.length) return true;
+      for (let i = si; i <= str.length; i++) {
+        if (globMatch(str, i, pat, pi)) return true;
+      }
+      return false;
+    }
+    // Handle '*' — matches within one path segment (no '/')
+    if (pat[pi] === '*') {
+      pi++;
+      if (pi === pat.length) {
+        // '*' at end: match rest if no '/' remains
+        return str.indexOf('/', si) === -1;
+      }
+      for (let i = si; i <= str.length; i++) {
+        if (str[i] === '/') break; // '*' cannot cross '/'
+        if (globMatch(str, i, pat, pi)) return true;
+      }
+      return false;
+    }
+    // Handle '?' — matches exactly one non-'/' character
+    if (pat[pi] === '?') {
+      if (si >= str.length || str[si] === '/') return false;
+      si++;
+      pi++;
+      continue;
+    }
+    // Literal character
+    if (si >= str.length || str[si] !== pat[pi]) return false;
+    si++;
+    pi++;
+  }
+  return si === str.length;
 }
 
 /**

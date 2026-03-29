@@ -39,9 +39,11 @@ jobs:
       - name: Determine package specifier
         id: pkg
         shell: bash
+        env:
+          INPUT_VERSION: ${{ github.event.inputs.version }}
         run: |
-          if [[ -n "${{ github.event.inputs.version }}" ]]; then
-            echo "spec=storj-uplink-mcp@${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
+          if [[ -n "$INPUT_VERSION" ]]; then
+            echo "spec=storj-uplink-mcp@$INPUT_VERSION" >> $GITHUB_OUTPUT
           else
             echo "spec=storj-uplink-mcp@latest" >> $GITHUB_OUTPUT
           fi

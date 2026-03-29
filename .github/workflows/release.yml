@@ -46,10 +46,14 @@ jobs:
 
       - name: Extract version
         id: version
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_VERSION: ${{ github.event.inputs.version }}
+          INPUT_DRY_RUN: ${{ github.event.inputs.dry_run }}
         run: |
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" && -n "${{ github.event.inputs.version }}" ]]; then
-            VERSION="${{ github.event.inputs.version }}"
-          elif [[ "${{ github.event_name }}" == "push" ]]; then
+          if [[ "$EVENT_NAME" == "workflow_dispatch" && -n "$INPUT_VERSION" ]]; then
+            VERSION="$INPUT_VERSION"
+          elif [[ "$EVENT_NAME" == "push" ]]; then
             VERSION="${GITHUB_REF_NAME#v}"
           else
             VERSION=$(node -p "require('./package.json').version")
@@ -62,8 +66,8 @@ jobs:
           echo "## Release Info" >> $GITHUB_STEP_SUMMARY
           echo "- **Version:** $VERSION" >> $GITHUB_STEP_SUMMARY
           echo "- **Tag:** $TAG" >> $GITHUB_STEP_SUMMARY
-          echo "- **Trigger:** ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Dry run:** ${{ github.event.inputs.dry_run || 'false' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Trigger:** $EVENT_NAME" >> $GITHUB_STEP_SUMMARY
+          echo "- **Dry run:** ${INPUT_DRY_RUN:-false}" >> $GITHUB_STEP_SUMMARY
 
       - name: Validate version format
         run: |
@@ -237,7 +241,7 @@ jobs:
           fi
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@da05d552573ad5aba039eaac05058a918a7bf631 # v2.2.2
         with:
           tag_name: ${{ needs.validate.outputs.tag }}
           name: "storj-uplink-mcp ${{ needs.validate.outputs.version }}"

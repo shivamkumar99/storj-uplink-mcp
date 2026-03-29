@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
 import { getProject } from '../auth.js';
-import { ok, safeCall, formatBytes, type McpTextResponse } from '../utils.js';
+import { ok, safeCall, formatBytes, validateFilePath, sanitizeOutput, type McpTextResponse } from '../utils.js';
 import { createProgress, type ProgressReporter } from '../progress.js';
 import { bucketField, keyField, chunkSizeField, DEFAULT_DOWNLOAD_CHUNK } from './schemas.js';
 import type { ProjectResultStruct, DownloadResultStruct } from 'storj-uplink-nodejs';
@@ -132,14 +132,33 @@ export const downloadTextSchema = z.object({
   chunk_size: chunkSizeField,
 });
 
+/** Maximum file size for download_text (50 MB) — prevents OOM and context flooding */
+const MAX_DOWNLOAD_TEXT_BYTES = 50 * 1024 * 1024;
+
 export function downloadText(
   args: z.infer<typeof downloadTextSchema>,
 ): Promise<McpTextResponse> {
   return safeCall(async () => {
     const project = await getProject();
+
+    // Check file size before downloading to prevent OOM
+    const info = await project.statObject(args.bucket, args.key);
+    const size = info.system.contentLength;
+    if (size > MAX_DOWNLOAD_TEXT_BYTES) {
+      return ok(
+        `File "${args.bucket}/${args.key}" is ${formatBytes(size)} — too large for download_text ` +
+        `(limit: ${formatBytes(MAX_DOWNLOAD_TEXT_BYTES)}).\n\n` +
+        `Use download_file to save it to disk, or peek_object_head / peek_object_tail to inspect it.`,
+      );
+    }
+
     const data = await readAll(project, args.bucket, args.key, args.chunk_size);
-    const text = data.toString('utf8');
-    return ok(`Content of "${args.bucket}/${args.key}" (${formatBytes(data.length)}):\n\n${text}`);
+    const text = sanitizeOutput(data.toString('utf8'));
+    return ok(
+      `--- BEGIN FILE CONTENT: ${args.bucket}/${args.key} (${formatBytes(data.length)}) ---\n` +
+      `${text}\n` +
+      `--- END FILE CONTENT ---`,
+    );
   });
 }
 
@@ -161,6 +180,7 @@ export function downloadFile(
   args: z.infer<typeof downloadFileSchema>,
 ): Promise<McpTextResponse> {
   return safeCall(async () => {
+    validateFilePath(args.file_path);
     const project = await getProject();
     const totalBytes = await downloadToFile(
       project, args.bucket, args.key, args.file_path, args.chunk_size,

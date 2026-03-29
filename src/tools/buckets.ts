@@ -8,14 +8,38 @@ import type { ProjectResultStruct } from 'storj-uplink-nodejs';
 /**
  * Match a name against a filter that can be a glob-like pattern or plain string.
  * Supports: * (any chars), ? (single char). No regex — safe for user input.
+ *
+ * Uses iterative character matching instead of RegExp to avoid ReDoS.
  */
 function matchPattern(name: string, pattern: string): boolean {
-  // Convert simple glob to regex: escape everything except * and ?
-  const escaped = pattern
-    .replace(/([.+^${}()|[\]\\])/g, '\\$1')
-    .replace(/\*/g, '.*')
-    .replace(/\?/g, '.');
-  return new RegExp(`^${escaped}$`).test(name);
+  return globMatch(name, 0, pattern, 0);
+}
+
+/** Recursive glob matcher — no RegExp, no ReDoS risk. */
+function globMatch(str: string, si: number, pat: string, pi: number): boolean {
+  while (pi < pat.length) {
+    const pc = pat[pi];
+    if (pc === '*') {
+      // Skip consecutive stars (treat "**" the same as "*" for flat names)
+      while (pi < pat.length && pat[pi] === '*') pi++;
+      // '*' at end matches everything remaining
+      if (pi === pat.length) return true;
+      // Try matching the rest of the pattern at every remaining position
+      for (let i = si; i <= str.length; i++) {
+        if (globMatch(str, i, pat, pi)) return true;
+      }
+      return false;
+    } else if (pc === '?') {
+      if (si >= str.length) return false;
+      si++;
+      pi++;
+    } else {
+      if (si >= str.length || str[si] !== pc) return false;
+      si++;
+      pi++;
+    }
+  }
+  return si === str.length;
 }
 
 /**

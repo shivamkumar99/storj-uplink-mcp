@@ -10,7 +10,7 @@
  */
 
 import { existsSync } from 'node:fs';
-import { join, dirname } from 'node:path';
+import { join, dirname, resolve, normalize } from 'node:path';
 import { execSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { arch, platform } from 'node:os';
@@ -31,6 +31,16 @@ const platformStr = `${platform()}-${arch()}`;
 const prebuiltNode = join(uplinkDir, 'native', 'prebuilds', platformStr, 'uplink_native.node');
 const buildNode = join(uplinkDir, 'build', 'Release', 'uplink_native.node');
 
+// Validate resolved paths stay inside uplinkDir (prevent path traversal)
+const normalizedRoot = normalize(resolve(uplinkDir));
+for (const p of [prebuiltNode, buildNode]) {
+  const np = normalize(resolve(p));
+  if (!np.startsWith(normalizedRoot)) {
+    console.error(`[storj-mcp] ERROR: resolved path escapes package directory: ${np}`);
+    process.exit(1);
+  }
+}
+
 if (existsSync(prebuiltNode) || existsSync(buildNode)) {
   console.log(`[storj-mcp] Native module already present for ${platformStr} — OK`);
   process.exit(0);
@@ -41,6 +51,14 @@ console.log(`[storj-mcp] Native module not found for ${platformStr}.`);
 console.log(`[storj-mcp] Running "make install" in storj-uplink-nodejs ...`);
 
 const makefile = join(uplinkDir, 'Makefile');
+
+// Validate Makefile path stays inside uplinkDir (prevent path traversal)
+const normalizedMakefile = normalize(resolve(makefile));
+if (!normalizedMakefile.startsWith(normalizedRoot)) {
+  console.error(`[storj-mcp] ERROR: Makefile path escapes package directory: ${normalizedMakefile}`);
+  process.exit(1);
+}
+
 if (!existsSync(makefile)) {
   console.error('[storj-mcp] ERROR: Makefile not found in storj-uplink-nodejs.');
   console.error('[storj-mcp] Please reinstall: npm install storj-uplink-nodejs');

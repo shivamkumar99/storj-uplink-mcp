@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import { z } from 'zod';
 import { getProject } from '../auth.js';
-import { ok, safeCall, formatBytes, type McpTextResponse } from '../utils.js';
+import { ok, safeCall, formatBytes, validateFilePath, type McpTextResponse } from '../utils.js';
 import { createProgress } from '../progress.js';
 import { bucketField, metadataField, chunkSizeField, DEFAULT_UPLOAD_CHUNK } from './schemas.js';
 import type { ProjectResultStruct, UploadResultStruct } from 'storj-uplink-nodejs';
@@ -133,6 +133,7 @@ export function uploadFile(
   args: z.infer<typeof uploadFileSchema>,
 ): Promise<McpTextResponse> {
   return safeCall(async () => {
+    validateFilePath(args.file_path);
     const project = await getProject();
     const totalBytes = await uploadFromFile(
       project, args.bucket, args.key, args.file_path, args.metadata, args.chunk_size,
