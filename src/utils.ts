@@ -176,6 +176,33 @@ export function validateFilePath(filePath: string): void {
 }
 
 // ---------------------------------------------------------------------------
+// Directory containment — prevent "Zip Slip" path escape (CWE-22).
+// When writing files whose names come from an untrusted source (e.g. object
+// keys from a shared bucket), a key like "../../etc/passwd" or "/etc/passwd"
+// must never resolve outside the intended destination directory.
+// Returns the safe absolute path, or throws if it would escape `baseDir`.
+// ---------------------------------------------------------------------------
+
+export function resolveWithinDir(baseDir: string, relativePath: string): string {
+  const root = path.resolve(baseDir);
+  const resolved = path.resolve(root, relativePath);
+  if (resolved !== root && !resolved.startsWith(root + path.sep)) {
+    throw new Error(`Path rejected: "${relativePath}" escapes destination directory "${baseDir}"`);
+  }
+  return resolved;
+}
+
+// ---------------------------------------------------------------------------
+// Convert an "expires in N hours" value to an absolute Date, or undefined.
+// Centralises the repeated `new Date(Date.now() + hours * 3600_000)` idiom.
+// ---------------------------------------------------------------------------
+
+export function expiryDate(hours?: number): Date | undefined {
+  if (hours === undefined) return undefined;
+  return new Date(Date.now() + hours * 3600 * 1000);
+}
+
+// ---------------------------------------------------------------------------
 // Format bytes to a human-readable string
 // ---------------------------------------------------------------------------
 

@@ -30,7 +30,7 @@
   "author": "Shivam Kumar",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.15.0",
-    "storj-uplink-nodejs": "^1.0.0",
+    "storj-uplink-nodejs": "^1.0.3",
     "zod": "^3.25.0"
   },
   "devDependencies": {

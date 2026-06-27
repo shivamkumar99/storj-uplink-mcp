@@ -6,6 +6,8 @@ import { guard } from './guard.js';
 import {
   listBucketsSchema, listBuckets,
   createBucketSchema, createBucket,
+  statBucketSchema, statBucket,
+  bucketUsageSchema, bucketUsage,
   deleteBucketSchema, deleteBucket,
   deleteBucketsSchema, deleteBuckets,
 } from './tools/buckets.js';
@@ -23,11 +25,13 @@ import {
 import {
   uploadTextSchema, uploadText,
   uploadFileSchema, uploadFile,
+  uploadDirectorySchema, uploadDirectory,
 } from './tools/upload.js';
 
 import {
   downloadTextSchema, downloadText,
   downloadFileSchema, downloadFile,
+  downloadPrefixSchema, downloadPrefix,
 } from './tools/download.js';
 
 import {
@@ -38,9 +42,15 @@ import {
 
 import {
   generateShareUrlSchema, generateShareUrl,
+  getS3CredentialsSchema, getS3Credentials,
   shareAccessSchema, shareAccess,
   serializeAccessSchema, serializeAccess,
 } from './tools/edge.js';
+
+import {
+  listMultipartUploadsSchema, listPendingUploads,
+  abortMultipartUploadSchema, abortMultipartUpload,
+} from './tools/multipart.js';
 
 // ---------------------------------------------------------------------------
 // Tool registry — OCP: adding a new tool = one new entry here + one import.
@@ -65,6 +75,16 @@ const TOOLS: ToolRegistrar[] = [
     'Create a new bucket in your Storj project (idempotent — safe to call if bucket already exists)',
     createBucketSchema.shape, (args) =>
       guard(() => { auditLog('create_bucket', args); return createBucket(args); })),
+
+  (s) => s.tool('stat_bucket',
+    'Get information about a single Storj bucket (name and creation time). Useful to check whether a bucket exists.',
+    statBucketSchema.shape, (args) =>
+      guard(() => { auditLog('stat_bucket', args); return statBucket(args); })),
+
+  (s) => s.tool('bucket_usage',
+    'Summarize storage usage for a bucket (or a prefix): object count and total bytes stored. Like "du" for Storj.',
+    bucketUsageSchema.shape, (args) =>
+      guard(() => { auditLog('bucket_usage', args); return bucketUsage(args); })),
 
   (s) => s.tool('delete_bucket',
     'Delete a Storj bucket. By default the bucket must be empty; set with_objects=true to delete all contents too.',
@@ -125,6 +145,12 @@ const TOOLS: ToolRegistrar[] = [
     uploadFileSchema.shape, (args) =>
       guard(() => { auditLog('upload_file', args); return uploadFile(args); })),
 
+  (s) => s.tool('upload_directory',
+    'Recursively upload a local folder to a Storj bucket under an optional key prefix. ' +
+    'Skips symlinks and sensitive paths; shows progress and reports per-file success/failure.',
+    uploadDirectorySchema.shape, (args) =>
+      guard(() => { auditLog('upload_directory', args); return uploadDirectory(args); })),
+
   // ── Download tools ────────────────────────────────────────────────────────
 
   (s) => s.tool('download_text',
@@ -137,6 +163,12 @@ const TOOLS: ToolRegistrar[] = [
     'Download a Storj object and save it to a local file path',
     downloadFileSchema.shape, (args) =>
       guard(() => { auditLog('download_file', args); return downloadFile(args); })),
+
+  (s) => s.tool('download_prefix',
+    'Bulk-download every object under a prefix (or a whole bucket) to a local directory, preserving folder layout. ' +
+    'Guards against path-escape from hostile object keys; shows progress and reports per-object success/failure.',
+    downloadPrefixSchema.shape, (args) =>
+      guard(() => { auditLog('download_prefix', args); return downloadPrefix(args); })),
 
   // ── Smart read tools (inspect large files without a full download) ─────────
 
@@ -165,9 +197,16 @@ const TOOLS: ToolRegistrar[] = [
   // ── Edge / sharing tools ──────────────────────────────────────────────────
 
   (s) => s.tool('generate_share_url',
-    'Generate a public shareable URL for a Storj object using Storj Edge linkshare service',
+    'Generate a public shareable URL for a Storj object using Storj Edge linkshare service. Optionally set an expiry.',
     generateShareUrlSchema.shape, (args) =>
       guard(() => { auditLog('generate_share_url', args); return generateShareUrl(args); })),
+
+  (s) => s.tool('get_s3_credentials',
+    'Issue S3-compatible credentials (access key, secret, endpoint) for use with rclone, aws-cli, or any S3 SDK. ' +
+    'Scoped to one bucket/prefix with least-privilege permissions (read-only by default) and an optional expiry. ' +
+    'The secret key is sensitive — handle with care.',
+    getS3CredentialsSchema.shape, (args) =>
+      guard(() => { auditLog('get_s3_credentials', args); return getS3Credentials(args); })),
 
   (s) => s.tool('share_access',
     'Create a restricted, serialized Storj access grant with specific permissions (download/upload/list/delete), optionally scoped to a bucket prefix and with an expiry time',
@@ -178,6 +217,18 @@ const TOOLS: ToolRegistrar[] = [
     'Serialize the current Storj access grant to a string that can be shared or stored',
     serializeAccessSchema.shape, () =>
       guard(() => { auditLog('serialize_access'); return serializeAccess(); })),
+
+  // ── Multipart housekeeping tools ──────────────────────────────────────────
+
+  (s) => s.tool('list_multipart_uploads',
+    'List pending (incomplete) multipart uploads in a bucket. These are invisible to list_objects but still consume storage until aborted or committed.',
+    listMultipartUploadsSchema.shape, (args) =>
+      guard(() => { auditLog('list_multipart_uploads', args); return listPendingUploads(args); })),
+
+  (s) => s.tool('abort_multipart_upload',
+    'Abort and discard one incomplete multipart upload (identified by key + upload_id from list_multipart_uploads), freeing the storage it holds.',
+    abortMultipartUploadSchema.shape, (args) =>
+      guard(() => { auditLog('abort_multipart_upload', args); return abortMultipartUpload(args); })),
 ];
 
 // ---------------------------------------------------------------------------

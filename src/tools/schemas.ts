@@ -23,6 +23,12 @@ export const metadataField = z
   .optional()
   .describe('Optional custom metadata key-value pairs');
 
+export const expiresInHoursField = z
+  .number()
+  .positive()
+  .optional()
+  .describe('Auto-expire after this many hours (Storj deletes it automatically). Omit for no expiry.');
+
 // ---------------------------------------------------------------------------
 // Transfer tuning
 // ---------------------------------------------------------------------------

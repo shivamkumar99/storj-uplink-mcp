@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
 import { getProject } from '../auth.js';
-import { ok, safeCall, formatBytes, validateFilePath, sanitizeOutput, type McpTextResponse } from '../utils.js';
+import { ok, safeCall, formatBytes, validateFilePath, resolveWithinDir, sanitizeOutput, type McpTextResponse } from '../utils.js';
 import { createProgress, type ProgressReporter } from '../progress.js';
 import { bucketField, keyField, chunkSizeField, DEFAULT_DOWNLOAD_CHUNK } from './schemas.js';
 import type { ProjectResultStruct, DownloadResultStruct } from 'storj-uplink-nodejs';
@@ -188,5 +188,92 @@ export function downloadFile(
     return ok(
       `Downloaded "${args.bucket}/${args.key}" → "${args.file_path}" (${formatBytes(totalBytes)})`,
     );
+  });
+}
+
+// ---------------------------------------------------------------------------
+// download_prefix — bulk-download every object under a prefix to a local dir
+//
+// Security:
+//   • Object keys are untrusted (a shared bucket may contain hostile keys like
+//     "../../etc/passwd").  resolveWithinDir enforces "Zip Slip" containment so
+//     no file can be written outside dest_dir.
+//   • validateFilePath additionally blocks sensitive targets within dest_dir.
+//   • A hard cap (MAX_PREFIX_OBJECTS) bounds resource use.
+// The prefix is stripped from each key so the local layout mirrors the prefix
+// root rather than re-nesting it under dest_dir.
+// ---------------------------------------------------------------------------
+
+/** Maximum number of objects a single download_prefix call will transfer */
+const MAX_PREFIX_OBJECTS = 5_000;
+
+export const downloadPrefixSchema = z.object({
+  bucket: bucketField,
+  prefix: z
+    .string()
+    .optional()
+    .describe('Download all objects under this prefix, e.g. "photos/2024/". Omit to download the whole bucket.'),
+  dest_dir: z.string().min(1).describe('Local directory to save files into, e.g. "./restore"'),
+  chunk_size: chunkSizeField,
+});
+
+export function downloadPrefix(
+  args: z.infer<typeof downloadPrefixSchema>,
+): Promise<McpTextResponse> {
+  return safeCall(async () => {
+    validateFilePath(args.dest_dir);
+    const project = await getProject();
+    const prefix = args.prefix ?? '';
+
+    const objects = await project.listObjects(args.bucket, {
+      prefix,
+      recursive: true,
+      system: false,
+      custom: false,
+    });
+    const keys = objects.filter((o) => !o.isPrefix).map((o) => o.key);
+
+    if (keys.length === 0) {
+      return ok(`No objects found in "${args.bucket}"${prefix ? `/${prefix}` : ''}.`);
+    }
+
+    const capped = keys.length > MAX_PREFIX_OBJECTS;
+    const targets = capped ? keys.slice(0, MAX_PREFIX_OBJECTS) : keys;
+
+    const progress = createProgress(`Downloading ${targets.length} object(s) from "${args.bucket}"`);
+    const downloaded: string[] = [];
+    const failed: Array<{ key: string; error: string }> = [];
+    let totalBytes = 0;
+
+    for (let i = 0; i < targets.length; i++) {
+      const key = targets[i];
+      // Strip the prefix so local layout mirrors the prefix root
+      const rel = prefix && key.startsWith(prefix) ? key.slice(prefix.length) : key;
+      progress.update(i, targets.length, `downloading "${key}"…`);
+      try {
+        const dest = resolveWithinDir(args.dest_dir, rel); // Zip-Slip guard
+        validateFilePath(dest);                            // defence in depth
+        const bytes = await downloadToFile(project, args.bucket, key, dest, args.chunk_size);
+        totalBytes += bytes;
+        downloaded.push(key);
+      } catch (err: unknown) {
+        failed.push({ key, error: err instanceof Error ? err.message : String(err) });
+      }
+    }
+
+    progress.done(`Downloaded ${downloaded.length}/${targets.length} object(s) (${formatBytes(totalBytes)})`);
+
+    const lines: string[] = [];
+    lines.push(`Downloaded ${downloaded.length} of ${targets.length} object(s) → "${args.dest_dir}" (${formatBytes(totalBytes)}):`);
+    if (capped) {
+      lines.push('');
+      lines.push(`⚠️  More than ${MAX_PREFIX_OBJECTS} objects matched — only the first ${MAX_PREFIX_OBJECTS} were downloaded.`);
+    }
+    if (failed.length > 0) {
+      lines.push('');
+      lines.push('❌ Failed:');
+      for (const f of failed) lines.push(`  - ${f.key}: ${f.error}`);
+    }
+    return ok(lines.join('\n'));
   });
 }
