@@ -3,99 +3,27 @@ import path from 'node:path';
 import { z } from 'zod';
 import { getProject } from '../auth.js';
 import { ok, safeCall, formatBytes, validateFilePath, expiryDate, type McpTextResponse } from '../utils.js';
-import { createProgress } from '../progress.js';
-import { bucketField, metadataField, chunkSizeField, expiresInHoursField, DEFAULT_UPLOAD_CHUNK } from './schemas.js';
-import type { ProjectResultStruct, UploadResultStruct } from 'storj-uplink-nodejs';
+import { bucketField, metadataField, chunkSizeField, expiresInHoursField } from './schemas.js';
+import { uploadObject, bufferSource, fileSource, type UploadOptions } from './transfer.js';
+import { runBatch, formatBatchReport } from './batch.js';
 
 // ---------------------------------------------------------------------------
-// runUpload — owns the upload lifecycle: open → optional metadata → write → commit.
-//
-// Accepts a `writer` callback that performs the actual data writes.  On any
-// error (from metadata, writer, or commit) the upload is aborted so partial
-// objects are never left dangling on Storj.
-//
-// Both uploadFromBuffer and uploadFromFile delegate here — the commit /
-// abort-on-error boilerplate lives in exactly one place.
+// The upload algorithm itself (open → write → commit, abort-safe, with
+// progress) lives in transfer.ts.  This file only maps tool arguments onto it
+// and picks the data source: bufferSource for text, fileSource for files.
 // ---------------------------------------------------------------------------
 
-async function runUpload(
-  project: ProjectResultStruct,
-  bucket: string,
-  key: string,
-  metadata: Record<string, string> | undefined,
-  writer: (upload: UploadResultStruct) => Promise<void>,
-  expires?: Date,
-): Promise<void> {
-  const upload = await project.uploadObject(bucket, key, expires ? { expires } : undefined);
-  try {
-    if (metadata) await upload.setCustomMetadata(metadata);
-    await writer(upload);
-    await upload.commit();
-  } catch (err) {
-    await upload.abort();
-    throw err;
-  }
-}
-
-// ---------------------------------------------------------------------------
-// uploadFromBuffer — used by uploadText (data already fully in memory)
-//
-// Slices the buffer into CHUNK_SIZE pieces so native write calls stay bounded.
-// ---------------------------------------------------------------------------
-
-async function uploadFromBuffer(
-  project: ProjectResultStruct,
-  bucket: string,
-  key: string,
-  data: Buffer,
-  metadata?: Record<string, string>,
-  chunkSize: number = DEFAULT_UPLOAD_CHUNK,
-  expires?: Date,
-): Promise<void> {
-  const progress = createProgress(`Uploading "${key}" (chunk ${formatBytes(chunkSize)})`);
-  await runUpload(project, bucket, key, metadata, async (upload) => {
-    let offset = 0;
-    while (offset < data.length) {
-      const end = Math.min(offset + chunkSize, data.length);
-      const chunk = data.subarray(offset, end);
-      await upload.write(chunk, chunk.length);
-      offset = end;
-      progress.update(offset, data.length);
-    }
-  }, expires);
-  progress.done(`Uploaded "${key}" (${formatBytes(data.length)})`);
-}
-
-// ---------------------------------------------------------------------------
-// uploadFromFile — used by uploadFile (true streaming, no readFileSync)
-//
-// Uses fs.createReadStream so only one CHUNK_SIZE block is ever in RAM.
-// GB-scale files do not cause OOM — process memory stays flat throughout.
-// ---------------------------------------------------------------------------
-
-async function uploadFromFile(
-  project: ProjectResultStruct,
-  bucket: string,
-  key: string,
-  filePath: string,
-  metadata?: Record<string, string>,
-  chunkSize: number = DEFAULT_UPLOAD_CHUNK,
-  expires?: Date,
-): Promise<number> {
-  // Get file size upfront for progress percentage
-  const fileSize = fs.statSync(filePath).size;
-  const progress = createProgress(`Uploading "${key}" (chunk ${formatBytes(chunkSize)})`);
-  let totalBytes = 0;
-  await runUpload(project, bucket, key, metadata, async (upload) => {
-    for await (const chunk of fs.createReadStream(filePath, { highWaterMark: chunkSize })) {
-      const buf = chunk as Buffer;
-      await upload.write(buf, buf.length);
-      totalBytes += buf.length;
-      progress.update(totalBytes, fileSize);
-    }
-  }, expires);
-  progress.done(`Uploaded "${key}" (${formatBytes(totalBytes)})`);
-  return totalBytes;
+/** Map the shared upload tool arguments onto transfer options. */
+function uploadOptionsFrom(args: {
+  metadata?: Record<string, string>;
+  chunk_size?: number;
+  expires_in_hours?: number;
+}): UploadOptions {
+  return {
+    metadata: args.metadata,
+    chunkSize: args.chunk_size,
+    expires: expiryDate(args.expires_in_hours),
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -117,9 +45,8 @@ export function uploadText(
   return safeCall(async () => {
     const project = await getProject();
     const data = Buffer.from(args.content, 'utf8');
-    await uploadFromBuffer(
-      project, args.bucket, args.key, data, args.metadata, args.chunk_size,
-      expiryDate(args.expires_in_hours),
+    await uploadObject(
+      project, { bucket: args.bucket, key: args.key }, bufferSource(data), uploadOptionsFrom(args),
     );
     return ok(`Uploaded "${args.key}" to bucket "${args.bucket}" (${formatBytes(data.length)})`);
   });
@@ -144,9 +71,8 @@ export function uploadFile(
   return safeCall(async () => {
     validateFilePath(args.file_path);
     const project = await getProject();
-    const totalBytes = await uploadFromFile(
-      project, args.bucket, args.key, args.file_path, args.metadata, args.chunk_size,
-      expiryDate(args.expires_in_hours),
+    const totalBytes = await uploadObject(
+      project, { bucket: args.bucket, key: args.key }, fileSource(args.file_path), uploadOptionsFrom(args),
     );
     return ok(`Uploaded "${args.file_path}" → "${args.bucket}/${args.key}" (${formatBytes(totalBytes)})`);
   });
@@ -209,45 +135,31 @@ export function uploadDirectory(
     }
 
     const project = await getProject();
-    const expires = expiryDate(args.expires_in_hours);
+    const opts = uploadOptionsFrom(args);
     const prefix = args.prefix ?? '';
-    const progress = createProgress(`Uploading ${targets.length} file(s) from "${args.dir_path}"`);
 
-    const uploaded: string[] = [];
-    const failed: Array<{ key: string; error: string }> = [];
-    let totalBytes = 0;
+    // POSIX-style key: prefix + path relative to root
+    const items = targets.map((file) => ({
+      file,
+      key: `${prefix}${path.relative(root, file).split(path.sep).join('/')}`,
+    }));
 
-    for (let i = 0; i < targets.length; i++) {
-      const file = targets[i];
-      // POSIX-style key: prefix + path relative to root
-      const rel = path.relative(root, file).split(path.sep).join('/');
-      const key = `${prefix}${rel}`;
-      progress.update(i, targets.length, `uploading "${key}"…`);
-      try {
-        validateFilePath(file); // defence in depth — re-check each file
-        const bytes = await uploadFromFile(
-          project, args.bucket, key, file, args.metadata, args.chunk_size, expires,
-        );
-        totalBytes += bytes;
-        uploaded.push(key);
-      } catch (err: unknown) {
-        failed.push({ key, error: err instanceof Error ? err.message : String(err) });
-      }
-    }
+    const result = await runBatch(items, {
+      label: `Uploading ${items.length} file(s) from "${args.dir_path}"`,
+      verb: 'uploading',
+      itemName: (it) => it.key,
+      op: async (it) => {
+        validateFilePath(it.file); // defence in depth — re-check each file
+        return uploadObject(project, { bucket: args.bucket, key: it.key }, fileSource(it.file), opts);
+      },
+      done: (r) => `Uploaded ${r.succeeded.length}/${r.total} file(s) (${formatBytes(r.totalBytes)})`,
+    });
 
-    progress.done(`Uploaded ${uploaded.length}/${targets.length} file(s) (${formatBytes(totalBytes)})`);
-
-    const lines: string[] = [];
-    lines.push(`Uploaded ${uploaded.length} of ${targets.length} file(s) to "${args.bucket}" (${formatBytes(totalBytes)}):`);
-    if (capped) {
-      lines.push('');
-      lines.push(`⚠️  Directory contains more than ${MAX_DIR_FILES} files — only the first ${MAX_DIR_FILES} were uploaded.`);
-    }
-    if (failed.length > 0) {
-      lines.push('');
-      lines.push('❌ Failed:');
-      for (const f of failed) lines.push(`  - ${f.key}: ${f.error}`);
-    }
-    return ok(lines.join('\n'));
+    return ok(formatBatchReport(result, {
+      header: `Uploaded ${result.succeeded.length} of ${result.total} file(s) to "${args.bucket}" (${formatBytes(result.totalBytes)}):`,
+      notes: capped
+        ? [`⚠️  Directory contains more than ${MAX_DIR_FILES} files — only the first ${MAX_DIR_FILES} were uploaded.`]
+        : undefined,
+    }));
   });
 }

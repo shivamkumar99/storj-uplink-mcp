@@ -11,59 +11,9 @@ import {
   dstKeyField,
   metadataField,
 } from './schemas.js';
+import { matchGlob } from './glob.js';
+import { runBatch, formatBatchReport } from './batch.js';
 import type { ProjectResultStruct } from 'storj-uplink-nodejs';
-
-/**
- * Match a key against a glob-like pattern.
- * Supports: * (within one path segment), ? (single char), ** (any path segments).
- *
- * Uses iterative character matching instead of RegExp to avoid ReDoS.
- */
-function matchPattern(key: string, pattern: string): boolean {
-  return globMatch(key, 0, pattern, 0);
-}
-
-/** Recursive glob matcher — no RegExp, no ReDoS risk. */
-function globMatch(str: string, si: number, pat: string, pi: number): boolean {
-  while (pi < pat.length) {
-    // Handle '**' — matches across path segments (including '/')
-    if (pat[pi] === '*' && pi + 1 < pat.length && pat[pi + 1] === '*') {
-      pi += 2;
-      // Skip trailing slash after '**' if present
-      if (pi < pat.length && pat[pi] === '/') pi++;
-      if (pi === pat.length) return true;
-      for (let i = si; i <= str.length; i++) {
-        if (globMatch(str, i, pat, pi)) return true;
-      }
-      return false;
-    }
-    // Handle '*' — matches within one path segment (no '/')
-    if (pat[pi] === '*') {
-      pi++;
-      if (pi === pat.length) {
-        // '*' at end: match rest if no '/' remains
-        return str.indexOf('/', si) === -1;
-      }
-      for (let i = si; i <= str.length; i++) {
-        if (str[i] === '/') break; // '*' cannot cross '/'
-        if (globMatch(str, i, pat, pi)) return true;
-      }
-      return false;
-    }
-    // Handle '?' — matches exactly one non-'/' character
-    if (pat[pi] === '?') {
-      if (si >= str.length || str[si] === '/') return false;
-      si++;
-      pi++;
-      continue;
-    }
-    // Literal character
-    if (si >= str.length || str[si] !== pat[pi]) return false;
-    si++;
-    pi++;
-  }
-  return si === str.length;
-}
 
 /**
  * Resolve which object keys to delete.
@@ -89,7 +39,7 @@ async function resolveObjectKeys(
 
   let names = objects.filter((o) => !o.isPrefix).map((o) => o.key);
   if (pattern) {
-    names = names.filter((k) => matchPattern(k, pattern));
+    names = names.filter((k) => matchGlob(k, pattern));
   }
   return names.sort();
 }
@@ -288,36 +238,17 @@ export function deleteObjects(
       return ok(`No objects matched ${filter} in bucket "${args.bucket}".`);
     }
 
-    const progress = createProgress(`Deleting ${targets.length} object(s) from "${args.bucket}"`);
-    const deleted: string[] = [];
-    const failed: Array<{ key: string; error: string }> = [];
+    const result = await runBatch(targets, {
+      label: `Deleting ${targets.length} object(s) from "${args.bucket}"`,
+      verb: 'deleting',
+      itemName: (key) => key,
+      op: async (key) => { await project.deleteObject(args.bucket, key); },
+      done: (r) => `Deleted ${r.succeeded.length}/${r.total} object(s) from "${args.bucket}"`,
+    });
 
-    for (let i = 0; i < targets.length; i++) {
-      const key = targets[i];
-      progress.update(i, targets.length, `deleting "${key}"…`);
-      try {
-        await project.deleteObject(args.bucket, key);
-        deleted.push(key);
-      } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : String(err);
-        failed.push({ key, error: msg });
-      }
-    }
-
-    progress.done(`Deleted ${deleted.length}/${targets.length} object(s) from "${args.bucket}"`);
-
-    const lines: string[] = [];
-    lines.push(`Deleted ${deleted.length} of ${targets.length} object(s) from "${args.bucket}":`);
-    if (deleted.length > 0) {
-      lines.push('');
-      lines.push('✅ Deleted:');
-      for (const k of deleted) lines.push(`  - ${k}`);
-    }
-    if (failed.length > 0) {
-      lines.push('');
-      lines.push('❌ Failed:');
-      for (const f of failed) lines.push(`  - ${f.key}: ${f.error}`);
-    }
-    return ok(lines.join('\n'));
+    return ok(formatBatchReport(result, {
+      header: `Deleted ${result.succeeded.length} of ${result.total} object(s) from "${args.bucket}":`,
+      successLabel: '✅ Deleted:',
+    }));
   });
 }

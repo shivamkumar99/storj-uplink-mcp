@@ -1,126 +1,15 @@
-import fs from 'node:fs';
-import path from 'node:path';
 import { z } from 'zod';
 import { getProject } from '../auth.js';
 import { ok, safeCall, formatBytes, validateFilePath, resolveWithinDir, sanitizeOutput, type McpTextResponse } from '../utils.js';
-import { createProgress, type ProgressReporter } from '../progress.js';
-import { bucketField, keyField, chunkSizeField, DEFAULT_DOWNLOAD_CHUNK } from './schemas.js';
-import type { ProjectResultStruct, DownloadResultStruct } from 'storj-uplink-nodejs';
+import { bucketField, keyField, chunkSizeField } from './schemas.js';
+import { downloadObject, memorySink, fileSink } from './transfer.js';
+import { runBatch, formatBatchReport } from './batch.js';
 
 // ---------------------------------------------------------------------------
-// drainDownload — read a Storj download handle chunk-by-chunk.
-//
-// Calls onChunk(buf, bytesRead) for every non-empty block, then closes the
-// handle (in its finally block, so cleanup always happens).
-//
-// The Storj SDK signals EOF by *throwing* an error that has a `bytesRead`
-// property attached.  This helper encapsulates that quirk so neither readAll
-// nor downloadToFile ever has to deal with it directly.
-//
-// If a ProgressReporter is provided, it receives update() calls with the
-// running byte total after every chunk.
+// The download algorithm itself (stat → open → drain → close, with progress)
+// lives in transfer.ts.  This file only maps tool arguments onto it and picks
+// the destination: memorySink to return content, fileSink to write to disk.
 // ---------------------------------------------------------------------------
-
-async function drainDownload(
-  download: DownloadResultStruct,
-  onChunk: (buf: Buffer, bytesRead: number) => void,
-  progress?: ProgressReporter,
-  totalSize?: number,
-  readChunk: number = DEFAULT_DOWNLOAD_CHUNK,
-): Promise<number> {
-  const buf = Buffer.alloc(readChunk);
-  let downloaded = 0;
-  try {
-    while (true) {
-      let bytesRead: number;
-      try {
-        ({ bytesRead } = await download.read(buf, readChunk));
-      } catch (err: unknown) {
-        // EOF arrives as a thrown error with an optional bytesRead property
-        const e = err as Record<string, unknown>;
-        bytesRead = typeof e['bytesRead'] === 'number' ? (e['bytesRead'] as number) : 0;
-      }
-      if (bytesRead > 0) {
-        onChunk(buf, bytesRead);
-        downloaded += bytesRead;
-        if (progress) progress.update(downloaded, totalSize ?? 0);
-      }
-      if (bytesRead < readChunk) break;
-    }
-  } finally {
-    await download.close();
-  }
-  return downloaded;
-}
-
-// ---------------------------------------------------------------------------
-// readAll — accumulate all bytes into a Buffer (used only by downloadText)
-//
-// Intentionally in-memory: downloadText must return the full file content as
-// a string, so there is no way to avoid holding it in RAM.
-// ---------------------------------------------------------------------------
-
-async function readAll(
-  project: ProjectResultStruct,
-  bucket: string,
-  key: string,
-  chunkSize: number = DEFAULT_DOWNLOAD_CHUNK,
-): Promise<Buffer> {
-  const progress = createProgress(`Downloading "${key}" (chunk ${formatBytes(chunkSize)})`);
-  // Get content length from object info for progress percentage
-  const info = await project.statObject(bucket, key);
-  const totalSize = info.system.contentLength;
-  const download = await project.downloadObject(bucket, key);
-  const chunks: Buffer[] = [];
-  const downloaded = await drainDownload(
-    download,
-    (buf, n) => chunks.push(Buffer.from(buf.subarray(0, n))),
-    progress,
-    totalSize,
-    chunkSize,
-  );
-  progress.done(`Downloaded "${key}" (${formatBytes(downloaded)})`);
-  return Buffer.concat(chunks);
-}
-
-// ---------------------------------------------------------------------------
-// downloadToFile — stream directly to disk, one READ_CHUNK at a time.
-//
-// Each chunk is written to an open file descriptor immediately after it is
-// read from Storj — only READ_CHUNK bytes are ever in RAM.  The fd is closed
-// in this function's finally; drainDownload closes the download handle in its
-// own finally, so both resources are always cleaned up regardless of errors.
-// ---------------------------------------------------------------------------
-
-async function downloadToFile(
-  project: ProjectResultStruct,
-  bucket: string,
-  key: string,
-  filePath: string,
-  chunkSize: number = DEFAULT_DOWNLOAD_CHUNK,
-): Promise<number> {
-  fs.mkdirSync(path.dirname(filePath), { recursive: true });
-  const progress = createProgress(`Downloading "${key}" (chunk ${formatBytes(chunkSize)})`);
-  // Get content length from object info for progress percentage
-  const info = await project.statObject(bucket, key);
-  const totalSize = info.system.contentLength;
-  const download = await project.downloadObject(bucket, key);
-  const fd = fs.openSync(filePath, 'w');
-  let totalBytes = 0;
-  try {
-    totalBytes = await drainDownload(
-      download,
-      (buf, n) => { fs.writeSync(fd, buf, 0, n); },
-      progress,
-      totalSize,
-      chunkSize,
-    );
-  } finally {
-    fs.closeSync(fd);
-  }
-  progress.done(`Downloaded "${key}" → "${filePath}" (${formatBytes(totalBytes)})`);
-  return totalBytes;
-}
 
 // ---------------------------------------------------------------------------
 // download_text — download object and return content as text
@@ -152,7 +41,10 @@ export function downloadText(
       );
     }
 
-    const data = await readAll(project, args.bucket, args.key, args.chunk_size);
+    // Intentionally in-memory: the full content must be returned as a string.
+    const sink = memorySink();
+    await downloadObject(project, { bucket: args.bucket, key: args.key }, sink, args.chunk_size);
+    const data = sink.result();
     const text = sanitizeOutput(data.toString('utf8'));
     return ok(
       `--- BEGIN FILE CONTENT: ${args.bucket}/${args.key} (${formatBytes(data.length)}) ---\n` +
@@ -182,8 +74,8 @@ export function downloadFile(
   return safeCall(async () => {
     validateFilePath(args.file_path);
     const project = await getProject();
-    const totalBytes = await downloadToFile(
-      project, args.bucket, args.key, args.file_path, args.chunk_size,
+    const totalBytes = await downloadObject(
+      project, { bucket: args.bucket, key: args.key }, fileSink(args.file_path), args.chunk_size,
     );
     return ok(
       `Downloaded "${args.bucket}/${args.key}" → "${args.file_path}" (${formatBytes(totalBytes)})`,
@@ -240,40 +132,25 @@ export function downloadPrefix(
     const capped = keys.length > MAX_PREFIX_OBJECTS;
     const targets = capped ? keys.slice(0, MAX_PREFIX_OBJECTS) : keys;
 
-    const progress = createProgress(`Downloading ${targets.length} object(s) from "${args.bucket}"`);
-    const downloaded: string[] = [];
-    const failed: Array<{ key: string; error: string }> = [];
-    let totalBytes = 0;
-
-    for (let i = 0; i < targets.length; i++) {
-      const key = targets[i];
-      // Strip the prefix so local layout mirrors the prefix root
-      const rel = prefix && key.startsWith(prefix) ? key.slice(prefix.length) : key;
-      progress.update(i, targets.length, `downloading "${key}"…`);
-      try {
+    const result = await runBatch(targets, {
+      label: `Downloading ${targets.length} object(s) from "${args.bucket}"`,
+      verb: 'downloading',
+      itemName: (key) => key,
+      op: async (key) => {
+        // Strip the prefix so local layout mirrors the prefix root
+        const rel = prefix && key.startsWith(prefix) ? key.slice(prefix.length) : key;
         const dest = resolveWithinDir(args.dest_dir, rel); // Zip-Slip guard
         validateFilePath(dest);                            // defence in depth
-        const bytes = await downloadToFile(project, args.bucket, key, dest, args.chunk_size);
-        totalBytes += bytes;
-        downloaded.push(key);
-      } catch (err: unknown) {
-        failed.push({ key, error: err instanceof Error ? err.message : String(err) });
-      }
-    }
+        return downloadObject(project, { bucket: args.bucket, key }, fileSink(dest), args.chunk_size);
+      },
+      done: (r) => `Downloaded ${r.succeeded.length}/${r.total} object(s) (${formatBytes(r.totalBytes)})`,
+    });
 
-    progress.done(`Downloaded ${downloaded.length}/${targets.length} object(s) (${formatBytes(totalBytes)})`);
-
-    const lines: string[] = [];
-    lines.push(`Downloaded ${downloaded.length} of ${targets.length} object(s) → "${args.dest_dir}" (${formatBytes(totalBytes)}):`);
-    if (capped) {
-      lines.push('');
-      lines.push(`⚠️  More than ${MAX_PREFIX_OBJECTS} objects matched — only the first ${MAX_PREFIX_OBJECTS} were downloaded.`);
-    }
-    if (failed.length > 0) {
-      lines.push('');
-      lines.push('❌ Failed:');
-      for (const f of failed) lines.push(`  - ${f.key}: ${f.error}`);
-    }
-    return ok(lines.join('\n'));
+    return ok(formatBatchReport(result, {
+      header: `Downloaded ${result.succeeded.length} of ${result.total} object(s) → "${args.dest_dir}" (${formatBytes(result.totalBytes)}):`,
+      notes: capped
+        ? [`⚠️  More than ${MAX_PREFIX_OBJECTS} objects matched — only the first ${MAX_PREFIX_OBJECTS} were downloaded.`]
+        : undefined,
+    }));
   });
 }

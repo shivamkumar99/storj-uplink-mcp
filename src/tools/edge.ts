@@ -1,9 +1,80 @@
 import { z } from 'zod';
-import { edgeRegisterAccess, edgeJoinShareUrl, EdgeRegions } from 'storj-uplink-nodejs';
+import {
+  edgeRegisterAccess,
+  edgeJoinShareUrl,
+  EdgeRegions,
+  type AccessResultStruct,
+  type EdgeCredentials,
+  type Permission,
+  type SharePrefix,
+} from 'storj-uplink-nodejs';
 import { requireAccess } from '../auth.js';
 import { ok, safeCall, expiryDate, type McpTextResponse } from '../utils.js';
-import { createProgress } from '../progress.js';
+import { createProgress, type ProgressReporter } from '../progress.js';
 import { bucketField, keyField, expiresInHoursField } from './schemas.js';
+
+type EdgeRegion = keyof typeof EdgeRegions;
+
+// ---------------------------------------------------------------------------
+// Shared helpers — the permission mapping, its description, and the
+// "mint a restricted grant → register with edge" step were previously
+// duplicated across generate_share_url, get_s3_credentials and share_access.
+// ---------------------------------------------------------------------------
+
+interface PermissionArgs {
+  allow_download?: boolean;
+  allow_upload?: boolean;
+  allow_list?: boolean;
+  allow_delete?: boolean;
+}
+
+/** Build a Permission from the tool's allow_* flags (download/list default on, upload/delete off). */
+function permissionFromArgs(args: PermissionArgs, notAfter?: Date): Permission {
+  return {
+    allowDownload: args.allow_download ?? true,
+    allowUpload: args.allow_upload ?? false,
+    allowList: args.allow_list ?? true,
+    allowDelete: args.allow_delete ?? false,
+    notAfter,
+  };
+}
+
+/** Human-readable summary, e.g. "download, list". */
+function describePermissions(p: Permission): string {
+  return [
+    p.allowDownload ? 'download' : null,
+    p.allowUpload ? 'upload' : null,
+    p.allowList ? 'list' : null,
+    p.allowDelete ? 'delete' : null,
+  ].filter(Boolean).join(', ');
+}
+
+/**
+ * Mint a restricted grant scoped to `prefix` and register it with the edge
+ * auth service for `region`.  Never registers the root grant.
+ */
+async function registerRestrictedAccess(
+  access: AccessResultStruct,
+  region: EdgeRegion,
+  permission: Permission,
+  prefix: SharePrefix,
+  isPublic: boolean,
+  progress: ProgressReporter,
+): Promise<{ credentials: EdgeCredentials; regionConfig: (typeof EdgeRegions)[EdgeRegion] }> {
+  const regionConfig = EdgeRegions[region];
+
+  progress.update(0, 0, 'creating restricted access…');
+  const sharedAccess = await access.share(permission, [prefix]);
+
+  progress.update(0, 0, 'registering with edge service…');
+  const credentials = await edgeRegisterAccess(
+    { authServiceAddress: regionConfig.authService },
+    sharedAccess._nativeHandle,
+    { isPublic },
+  );
+
+  return { credentials, regionConfig };
+}
 
 // ---------------------------------------------------------------------------
 // generate_share_url — create a public linkshare URL for an object
@@ -31,23 +102,16 @@ export function generateShareUrl(
   return safeCall(async () => {
     const access = await requireAccess();
     const progress = createProgress(`Generating share URL for "${args.key}"`);
-
-    const region = args.region ?? 'US1';
-    const regionConfig = EdgeRegions[region];
     const notAfter = expiryDate(args.expires_in_hours);
 
-    // Create a read-only, public, prefix-scoped access for this object
-    progress.update(0, 0, 'creating restricted access…');
-    const sharedAccess = await access.share(
+    // Read-only, public, scoped to exactly this object
+    const { credentials, regionConfig } = await registerRestrictedAccess(
+      access,
+      args.region ?? 'US1',
       { allowDownload: true, allowList: true, notAfter },
-      [{ bucket: args.bucket, prefix: args.key }],
-    );
-
-    progress.update(0, 0, 'registering with edge service…');
-    const credentials = await edgeRegisterAccess(
-      { authServiceAddress: regionConfig.authService },
-      sharedAccess._nativeHandle,
-      { isPublic: true },
+      { bucket: args.bucket, prefix: args.key },
+      true,
+      progress,
     );
 
     const url = await edgeJoinShareUrl(
@@ -100,41 +164,21 @@ export function getS3Credentials(
 ): Promise<McpTextResponse> {
   return safeCall(async () => {
     const access = await requireAccess();
-    const region = args.region ?? 'US1';
-    const regionConfig = EdgeRegions[region];
     const notAfter = expiryDate(args.expires_in_hours);
-
+    const permission = permissionFromArgs(args, notAfter);
     const progress = createProgress(`Issuing S3 credentials for "${args.bucket}"`);
 
-    // Least privilege: mint a restricted grant scoped to this bucket/prefix.
-    progress.update(0, 0, 'creating restricted access…');
-    const sharedAccess = await access.share(
-      {
-        allowDownload: args.allow_download ?? true,
-        allowUpload: args.allow_upload ?? false,
-        allowList: args.allow_list ?? true,
-        allowDelete: args.allow_delete ?? false,
-        notAfter,
-      },
-      [{ bucket: args.bucket, prefix: args.prefix }],
-    );
-
     // isPublic: false → private S3 credentials (secret required to use them).
-    progress.update(0, 0, 'registering with edge service…');
-    const credentials = await edgeRegisterAccess(
-      { authServiceAddress: regionConfig.authService },
-      sharedAccess._nativeHandle,
-      { isPublic: false },
+    const { credentials } = await registerRestrictedAccess(
+      access,
+      args.region ?? 'US1',
+      permission,
+      { bucket: args.bucket, prefix: args.prefix },
+      false,
+      progress,
     );
 
     progress.done(`S3 credentials issued for "${args.bucket}"`);
-
-    const permissions = [
-      args.allow_download !== false ? 'download' : null,
-      args.allow_upload ? 'upload' : null,
-      args.allow_list !== false ? 'list' : null,
-      args.allow_delete ? 'delete' : null,
-    ].filter(Boolean).join(', ');
 
     return ok(
       `S3-compatible credentials (keep the secret key safe — anyone with it has the access above):\n\n` +
@@ -142,7 +186,7 @@ export function getS3Credentials(
         `  Access Key ID:   ${credentials.accessKeyId}\n` +
         `  Secret Key:      ${credentials.secretKey}\n\n` +
         `  Scope:           ${args.bucket}${args.prefix ? `/${args.prefix}` : ' (whole bucket)'}\n` +
-        `  Permissions:     ${permissions}\n` +
+        `  Permissions:     ${describePermissions(permission)}\n` +
         `  Expires:         ${notAfter ? notAfter.toISOString() : 'never'}\n\n` +
         `Use with rclone/aws-cli/S3 SDKs, e.g.:\n` +
         `  aws s3 --endpoint-url ${credentials.endpoint} ls s3://${args.bucket}/${args.prefix ?? ''}`,
@@ -161,11 +205,9 @@ export const shareAccessSchema = z.object({
   allow_upload: z.boolean().optional().describe('Allow uploading objects. Default: false'),
   allow_list: z.boolean().optional().describe('Allow listing objects. Default: true'),
   allow_delete: z.boolean().optional().describe('Allow deleting objects. Default: false'),
-  expires_in_hours: z
-    .number()
-    .positive()
-    .optional()
-    .describe('Access grant expires after this many hours. Omit for no expiry'),
+  expires_in_hours: expiresInHoursField.describe(
+    'Access grant expires after this many hours. Omit for no expiry',
+  ),
 });
 
 export function shareAccess(
@@ -173,38 +215,17 @@ export function shareAccess(
 ): Promise<McpTextResponse> {
   return safeCall(async () => {
     const access = await requireAccess();
+    const notAfter = expiryDate(args.expires_in_hours);
+    const permission = permissionFromArgs(args, notAfter);
 
-    const notAfter = args.expires_in_hours
-      ? new Date(Date.now() + args.expires_in_hours * 3600 * 1000)
-      : undefined;
-
-    const sharedAccess = await access.share(
-      {
-        allowDownload: args.allow_download ?? true,
-        allowUpload: args.allow_upload ?? false,
-        allowList: args.allow_list ?? true,
-        allowDelete: args.allow_delete ?? false,
-        notAfter,
-      },
-      [{ bucket: args.bucket, prefix: args.prefix }],
-    );
-
+    const sharedAccess = await access.share(permission, [{ bucket: args.bucket, prefix: args.prefix }]);
     const serialized = await sharedAccess.serialize();
-
-    const permissions = [
-      args.allow_download !== false ? 'download' : null,
-      args.allow_upload ? 'upload' : null,
-      args.allow_list !== false ? 'list' : null,
-      args.allow_delete ? 'delete' : null,
-    ]
-      .filter(Boolean)
-      .join(', ');
 
     return ok(
       `Restricted access grant created:\n` +
         `  Bucket: ${args.bucket}\n` +
         `  Prefix: ${args.prefix ?? '(all objects)'}\n` +
-        `  Permissions: ${permissions}\n` +
+        `  Permissions: ${describePermissions(permission)}\n` +
         `  Expires: ${notAfter ? notAfter.toISOString() : 'never'}\n\n` +
         `Access Grant:\n${serialized}`,
     );
