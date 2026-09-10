@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { defineTool } from '../registry.js';
 import { getProject } from '../auth.js';
 import { ok, safeCall, formatBytes, validateFilePath, resolveWithinDir, sanitizeOutput, type McpTextResponse } from '../utils.js';
 import { bucketField, keyField, chunkSizeField } from './schemas.js';
@@ -154,3 +155,32 @@ export function downloadPrefix(
     }));
   });
 }
+
+// ---------------------------------------------------------------------------
+// Tool registry for this module (see registry.ts)
+// ---------------------------------------------------------------------------
+
+export const tools = [
+  defineTool({
+    name: 'download_text',
+    description:
+      'Download a Storj object and return its content as text. ' +
+      'Loads the full file — use peek_object_head, peek_object_tail, or grep_object for large files.',
+    schema: downloadTextSchema,
+    handler: downloadText,
+  }),
+  defineTool({
+    name: 'download_file',
+    description: 'Download a Storj object and save it to a local file path',
+    schema: downloadFileSchema,
+    handler: downloadFile,
+  }),
+  defineTool({
+    name: 'download_prefix',
+    description:
+      'Bulk-download every object under a prefix (or a whole bucket) to a local directory, preserving folder layout. ' +
+      'Guards against path-escape from hostile object keys; shows progress and reports per-object success/failure.',
+    schema: downloadPrefixSchema,
+    handler: downloadPrefix,
+  }),
+];

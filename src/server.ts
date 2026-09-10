@@ -1,239 +1,33 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { setServer } from './progress.js';
-import { auditLog } from './audit.js';
-import { guard } from './guard.js';
+import { registerTools, type Tool } from './registry.js';
 
-import {
-  listBucketsSchema, listBuckets,
-  createBucketSchema, createBucket,
-  statBucketSchema, statBucket,
-  bucketUsageSchema, bucketUsage,
-  deleteBucketSchema, deleteBucket,
-  deleteBucketsSchema, deleteBuckets,
-} from './tools/buckets.js';
-
-import {
-  listObjectsSchema, listObjects,
-  statObjectSchema, statObject,
-  deleteObjectSchema, deleteObject,
-  deleteObjectsSchema, deleteObjects,
-  copyObjectSchema, copyObject,
-  moveObjectSchema, moveObject,
-  updateMetadataSchema, updateMetadata,
-} from './tools/objects.js';
-
-import {
-  uploadTextSchema, uploadText,
-  uploadFileSchema, uploadFile,
-  uploadDirectorySchema, uploadDirectory,
-} from './tools/upload.js';
-
-import {
-  downloadTextSchema, downloadText,
-  downloadFileSchema, downloadFile,
-  downloadPrefixSchema, downloadPrefix,
-} from './tools/download.js';
-
-import {
-  peekObjectHeadSchema, peekObjectHead,
-  peekObjectTailSchema, peekObjectTail,
-  grepObjectSchema, grepObject,
-} from './tools/smart_read.js';
-
-import {
-  generateShareUrlSchema, generateShareUrl,
-  getS3CredentialsSchema, getS3Credentials,
-  shareAccessSchema, shareAccess,
-  serializeAccessSchema, serializeAccess,
-} from './tools/edge.js';
-
-import {
-  listMultipartUploadsSchema, listPendingUploads,
-  abortMultipartUploadSchema, abortMultipartUpload,
-} from './tools/multipart.js';
+import { tools as bucketTools } from './tools/buckets.js';
+import { tools as objectTools } from './tools/objects.js';
+import { tools as uploadTools } from './tools/upload.js';
+import { tools as downloadTools } from './tools/download.js';
+import { tools as smartReadTools } from './tools/smart_read.js';
+import { tools as edgeTools } from './tools/edge.js';
+import { tools as multipartTools } from './tools/multipart.js';
 
 // ---------------------------------------------------------------------------
-// Tool registry — OCP: adding a new tool = one new entry here + one import.
+// Composition root.
 //
-// Each entry is a closure over (server) that calls server.tool() directly,
-// letting TypeScript resolve schema→handler types per-call with full inference.
-// The registration loop in createServer() never changes.
+// Each tool module owns its own tool definitions (see registry.ts), so adding
+// a tool to an existing module needs no change here.  Adding a whole new
+// module is one import plus one entry below.  The order here is the order
+// MCP clients list the tools in.
 // ---------------------------------------------------------------------------
 
-type ToolRegistrar = (server: McpServer) => void;
-
-const TOOLS: ToolRegistrar[] = [
-
-  // ── Bucket tools ──────────────────────────────────────────────────────────
-
-  (s) => s.tool('list_buckets',
-    'List all buckets in your Storj project',
-    listBucketsSchema.shape, () =>
-      guard(() => { auditLog('list_buckets'); return listBuckets(); })),
-
-  (s) => s.tool('create_bucket',
-    'Create a new bucket in your Storj project (idempotent — safe to call if bucket already exists)',
-    createBucketSchema.shape, (args) =>
-      guard(() => { auditLog('create_bucket', args); return createBucket(args); })),
-
-  (s) => s.tool('stat_bucket',
-    'Get information about a single Storj bucket (name and creation time). Useful to check whether a bucket exists.',
-    statBucketSchema.shape, (args) =>
-      guard(() => { auditLog('stat_bucket', args); return statBucket(args); })),
-
-  (s) => s.tool('bucket_usage',
-    'Summarize storage usage for a bucket (or a prefix): object count and total bytes stored. Like "du" for Storj.',
-    bucketUsageSchema.shape, (args) =>
-      guard(() => { auditLog('bucket_usage', args); return bucketUsage(args); })),
-
-  (s) => s.tool('delete_bucket',
-    'Delete a Storj bucket. By default the bucket must be empty; set with_objects=true to delete all contents too.',
-    deleteBucketSchema.shape, (args) =>
-      guard(() => { auditLog('delete_bucket', args); return deleteBucket(args); })),
-
-  (s) => s.tool('delete_buckets',
-    'Batch-delete multiple buckets by name list or glob pattern (e.g. "logs-*", "test-*"). Shows progress and reports per-bucket success/failure.',
-    deleteBucketsSchema.shape, (args) =>
-      guard(() => { auditLog('delete_buckets', args); return deleteBuckets(args); })),
-
-  // ── Object tools ──────────────────────────────────────────────────────────
-
-  (s) => s.tool('list_objects',
-    'List objects in a Storj bucket, optionally filtered by prefix',
-    listObjectsSchema.shape, (args) =>
-      guard(() => { auditLog('list_objects', args); return listObjects(args); })),
-
-  (s) => s.tool('stat_object',
-    'Get information about a Storj object: size, creation date, expiry, and custom metadata',
-    statObjectSchema.shape, (args) =>
-      guard(() => { auditLog('stat_object', args); return statObject(args); })),
-
-  (s) => s.tool('delete_object',
-    'Delete an object from a Storj bucket',
-    deleteObjectSchema.shape, (args) =>
-      guard(() => { auditLog('delete_object', args); return deleteObject(args); })),
-
-  (s) => s.tool('delete_objects',
-    'Batch-delete multiple objects by key list, prefix, or glob pattern (e.g. "*.log", "photos/**/*.tmp"). Shows progress and reports per-object success/failure.',
-    deleteObjectsSchema.shape, (args) =>
-      guard(() => { auditLog('delete_objects', args); return deleteObjects(args); })),
-
-  (s) => s.tool('copy_object',
-    'Copy an object to a new key or bucket on Storj',
-    copyObjectSchema.shape, (args) =>
-      guard(() => { auditLog('copy_object', args); return copyObject(args); })),
-
-  (s) => s.tool('move_object',
-    'Move or rename an object on Storj',
-    moveObjectSchema.shape, (args) =>
-      guard(() => { auditLog('move_object', args); return moveObject(args); })),
-
-  (s) => s.tool('update_metadata',
-    'Update custom metadata key-value pairs on an existing Storj object',
-    updateMetadataSchema.shape, (args) =>
-      guard(() => { auditLog('update_metadata', args); return updateMetadata(args); })),
-
-  // ── Upload tools ──────────────────────────────────────────────────────────
-
-  (s) => s.tool('upload_text',
-    'Upload text or string content as an object to Storj',
-    uploadTextSchema.shape, (args) =>
-      guard(() => { auditLog('upload_text', args); return uploadText(args); })),
-
-  (s) => s.tool('upload_file',
-    'Read a local file from disk and upload it to Storj',
-    uploadFileSchema.shape, (args) =>
-      guard(() => { auditLog('upload_file', args); return uploadFile(args); })),
-
-  (s) => s.tool('upload_directory',
-    'Recursively upload a local folder to a Storj bucket under an optional key prefix. ' +
-    'Skips symlinks and sensitive paths; shows progress and reports per-file success/failure.',
-    uploadDirectorySchema.shape, (args) =>
-      guard(() => { auditLog('upload_directory', args); return uploadDirectory(args); })),
-
-  // ── Download tools ────────────────────────────────────────────────────────
-
-  (s) => s.tool('download_text',
-    'Download a Storj object and return its content as text. ' +
-    'Loads the full file — use peek_object_head, peek_object_tail, or grep_object for large files.',
-    downloadTextSchema.shape, (args) =>
-      guard(() => { auditLog('download_text', args); return downloadText(args); })),
-
-  (s) => s.tool('download_file',
-    'Download a Storj object and save it to a local file path',
-    downloadFileSchema.shape, (args) =>
-      guard(() => { auditLog('download_file', args); return downloadFile(args); })),
-
-  (s) => s.tool('download_prefix',
-    'Bulk-download every object under a prefix (or a whole bucket) to a local directory, preserving folder layout. ' +
-    'Guards against path-escape from hostile object keys; shows progress and reports per-object success/failure.',
-    downloadPrefixSchema.shape, (args) =>
-      guard(() => { auditLog('download_prefix', args); return downloadPrefix(args); })),
-
-  // ── Smart read tools (inspect large files without a full download) ─────────
-
-  (s) => s.tool('peek_object_head',
-    'Read the first N lines of a Storj object without downloading the whole file. ' +
-    'Only fetches the minimum bytes needed. ' +
-    'Ideal for CSV headers, JSON structure, config files, or any text file. Safe on files of any size.',
-    peekObjectHeadSchema.shape, (args) =>
-      guard(() => { auditLog('peek_object_head', args); return peekObjectHead(args); })),
-
-  (s) => s.tool('peek_object_tail',
-    'Read the last N lines of a Storj object without downloading the whole file. ' +
-    'Only fetches the final 512 KB regardless of total size. ' +
-    'Ideal for recent log entries, last rows of a CSV, or the tail of any append-only file.',
-    peekObjectTailSchema.shape, (args) =>
-      guard(() => { auditLog('peek_object_tail', args); return peekObjectTail(args); })),
-
-  (s) => s.tool('grep_object',
-    'Stream-search a Storj object for a keyword and return only the matching lines. ' +
-    'Aborts as soon as max_matches is reached — never downloads the full file. ' +
-    'Supports surrounding context lines (like grep -C). Case-insensitive. ' +
-    'Safe for multi-GB log files, large CSVs, or any text file.',
-    grepObjectSchema.shape, (args) =>
-      guard(() => { auditLog('grep_object', args); return grepObject(args); })),
-
-  // ── Edge / sharing tools ──────────────────────────────────────────────────
-
-  (s) => s.tool('generate_share_url',
-    'Generate a public shareable URL for a Storj object using Storj Edge linkshare service. Optionally set an expiry.',
-    generateShareUrlSchema.shape, (args) =>
-      guard(() => { auditLog('generate_share_url', args); return generateShareUrl(args); })),
-
-  (s) => s.tool('get_s3_credentials',
-    'Issue S3-compatible credentials (access key, secret, endpoint) for use with rclone, aws-cli, or any S3 SDK. ' +
-    'Scoped to one bucket/prefix with least-privilege permissions (read-only by default) and an optional expiry. ' +
-    'The secret key is sensitive — handle with care.',
-    getS3CredentialsSchema.shape, (args) =>
-      guard(() => { auditLog('get_s3_credentials', args); return getS3Credentials(args); })),
-
-  (s) => s.tool('share_access',
-    'Create a restricted, serialized Storj access grant with specific permissions (download/upload/list/delete), optionally scoped to a bucket prefix and with an expiry time',
-    shareAccessSchema.shape, (args) =>
-      guard(() => { auditLog('share_access', args); return shareAccess(args); })),
-
-  (s) => s.tool('serialize_access',
-    'Serialize the current Storj access grant to a string that can be shared or stored',
-    serializeAccessSchema.shape, () =>
-      guard(() => { auditLog('serialize_access'); return serializeAccess(); })),
-
-  // ── Multipart housekeeping tools ──────────────────────────────────────────
-
-  (s) => s.tool('list_multipart_uploads',
-    'List pending (incomplete) multipart uploads in a bucket. These are invisible to list_objects but still consume storage until aborted or committed.',
-    listMultipartUploadsSchema.shape, (args) =>
-      guard(() => { auditLog('list_multipart_uploads', args); return listPendingUploads(args); })),
-
-  (s) => s.tool('abort_multipart_upload',
-    'Abort and discard one incomplete multipart upload (identified by key + upload_id from list_multipart_uploads), freeing the storage it holds.',
-    abortMultipartUploadSchema.shape, (args) =>
-      guard(() => { auditLog('abort_multipart_upload', args); return abortMultipartUpload(args); })),
+const TOOLS: readonly Tool[] = [
+  ...bucketTools,
+  ...objectTools,
+  ...uploadTools,
+  ...downloadTools,
+  ...smartReadTools,
+  ...edgeTools,
+  ...multipartTools,
 ];
-
-// ---------------------------------------------------------------------------
-// createServer — pure composition root.  Registration logic lives here once.
-// ---------------------------------------------------------------------------
 
 export function createServer(): McpServer {
   const server = new McpServer({
@@ -244,9 +38,7 @@ export function createServer(): McpServer {
   // Wire up progress reporting so tool handlers can send logging notifications
   setServer(server.server);
 
-  for (const register of TOOLS) {
-    register(server);
-  }
+  registerTools(server, TOOLS);
 
   return server;
 }

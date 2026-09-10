@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { defineTool } from '../registry.js';
 import { getProject } from '../auth.js';
 import { ok, safeCall, formatBytes, formatTimestamp, type McpTextResponse } from '../utils.js';
 import { createProgress } from '../progress.js';
@@ -230,3 +231,46 @@ export function deleteBuckets(
     }));
   });
 }
+
+// ---------------------------------------------------------------------------
+// Tool registry for this module (see registry.ts)
+// ---------------------------------------------------------------------------
+
+export const tools = [
+  defineTool({
+    name: 'list_buckets',
+    description: 'List all buckets in your Storj project',
+    schema: listBucketsSchema,
+    handler: listBuckets,
+  }),
+  defineTool({
+    name: 'create_bucket',
+    description: 'Create a new bucket in your Storj project (idempotent — safe to call if bucket already exists)',
+    schema: createBucketSchema,
+    handler: createBucket,
+  }),
+  defineTool({
+    name: 'stat_bucket',
+    description: 'Get information about a single Storj bucket (name and creation time). Useful to check whether a bucket exists.',
+    schema: statBucketSchema,
+    handler: statBucket,
+  }),
+  defineTool({
+    name: 'bucket_usage',
+    description: 'Summarize storage usage for a bucket (or a prefix): object count and total bytes stored. Like "du" for Storj.',
+    schema: bucketUsageSchema,
+    handler: bucketUsage,
+  }),
+  defineTool({
+    name: 'delete_bucket',
+    description: 'Delete a Storj bucket. By default the bucket must be empty; set with_objects=true to delete all contents too.',
+    schema: deleteBucketSchema,
+    handler: deleteBucket,
+  }),
+  defineTool({
+    name: 'delete_buckets',
+    description: 'Batch-delete multiple buckets by name list or glob pattern (e.g. "logs-*", "test-*"). Shows progress and reports per-bucket success/failure.',
+    schema: deleteBucketsSchema,
+    handler: deleteBuckets,
+  }),
+];

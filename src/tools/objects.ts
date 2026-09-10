@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { defineTool } from '../registry.js';
 import { getProject } from '../auth.js';
 import { ok, safeCall, formatBytes, formatTimestamp, type McpTextResponse } from '../utils.js';
 import { createProgress } from '../progress.js';
@@ -252,3 +253,52 @@ export function deleteObjects(
     }));
   });
 }
+
+// ---------------------------------------------------------------------------
+// Tool registry for this module (see registry.ts)
+// ---------------------------------------------------------------------------
+
+export const tools = [
+  defineTool({
+    name: 'list_objects',
+    description: 'List objects in a Storj bucket, optionally filtered by prefix',
+    schema: listObjectsSchema,
+    handler: listObjects,
+  }),
+  defineTool({
+    name: 'stat_object',
+    description: 'Get information about a Storj object: size, creation date, expiry, and custom metadata',
+    schema: statObjectSchema,
+    handler: statObject,
+  }),
+  defineTool({
+    name: 'delete_object',
+    description: 'Delete an object from a Storj bucket',
+    schema: deleteObjectSchema,
+    handler: deleteObject,
+  }),
+  defineTool({
+    name: 'delete_objects',
+    description: 'Batch-delete multiple objects by key list, prefix, or glob pattern (e.g. "*.log", "photos/**/*.tmp"). Shows progress and reports per-object success/failure.',
+    schema: deleteObjectsSchema,
+    handler: deleteObjects,
+  }),
+  defineTool({
+    name: 'copy_object',
+    description: 'Copy an object to a new key or bucket on Storj',
+    schema: copyObjectSchema,
+    handler: copyObject,
+  }),
+  defineTool({
+    name: 'move_object',
+    description: 'Move or rename an object on Storj',
+    schema: moveObjectSchema,
+    handler: moveObject,
+  }),
+  defineTool({
+    name: 'update_metadata',
+    description: 'Update custom metadata key-value pairs on an existing Storj object',
+    schema: updateMetadataSchema,
+    handler: updateMetadata,
+  }),
+];

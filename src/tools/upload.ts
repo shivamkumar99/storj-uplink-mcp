@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
+import { defineTool } from '../registry.js';
 import { getProject } from '../auth.js';
 import { ok, safeCall, formatBytes, validateFilePath, expiryDate, type McpTextResponse } from '../utils.js';
 import { bucketField, metadataField, chunkSizeField, expiresInHoursField } from './schemas.js';
@@ -163,3 +164,30 @@ export function uploadDirectory(
     }));
   });
 }
+
+// ---------------------------------------------------------------------------
+// Tool registry for this module (see registry.ts)
+// ---------------------------------------------------------------------------
+
+export const tools = [
+  defineTool({
+    name: 'upload_text',
+    description: 'Upload text or string content as an object to Storj',
+    schema: uploadTextSchema,
+    handler: uploadText,
+  }),
+  defineTool({
+    name: 'upload_file',
+    description: 'Read a local file from disk and upload it to Storj',
+    schema: uploadFileSchema,
+    handler: uploadFile,
+  }),
+  defineTool({
+    name: 'upload_directory',
+    description:
+      'Recursively upload a local folder to a Storj bucket under an optional key prefix. ' +
+      'Skips symlinks and sensitive paths; shows progress and reports per-file success/failure.',
+    schema: uploadDirectorySchema,
+    handler: uploadDirectory,
+  }),
+];

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { defineTool } from '../registry.js';
 import { listMultipartUploads, MultipartUpload } from 'storj-uplink-nodejs';
 import { getProject } from '../auth.js';
 import { ok, safeCall, formatTimestamp, type McpTextResponse } from '../utils.js';
@@ -75,3 +76,22 @@ export function abortMultipartUpload(
     return ok(`Aborted incomplete multipart upload "${args.bucket}/${args.key}" (upload_id: ${args.upload_id}).`);
   });
 }
+
+// ---------------------------------------------------------------------------
+// Tool registry for this module (see registry.ts)
+// ---------------------------------------------------------------------------
+
+export const tools = [
+  defineTool({
+    name: 'list_multipart_uploads',
+    description: 'List pending (incomplete) multipart uploads in a bucket. These are invisible to list_objects but still consume storage until aborted or committed.',
+    schema: listMultipartUploadsSchema,
+    handler: listPendingUploads,
+  }),
+  defineTool({
+    name: 'abort_multipart_upload',
+    description: 'Abort and discard one incomplete multipart upload (identified by key + upload_id from list_multipart_uploads), freeing the storage it holds.',
+    schema: abortMultipartUploadSchema,
+    handler: abortMultipartUpload,
+  }),
+];
