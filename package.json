@@ -30,11 +30,13 @@
   "author": "Shivam Kumar",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.15.0",
+    "picomatch": "^4.0.7",
     "storj-uplink-nodejs": "^1.0.3",
     "zod": "^3.25.0"
   },
   "devDependencies": {
     "@types/node": "^20",
+    "@types/picomatch": "^4.0.3",
     "typescript": "^5"
   },
   "keywords": [
