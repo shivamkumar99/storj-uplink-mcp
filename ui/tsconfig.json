@@ -9,5 +9,5 @@
     "skipLibCheck": true,
     "esModuleInterop": true
   },
-  "include": ["**/*.ts", "../src/features/objects/output.ts"]
+  "include": ["**/*.ts", "../src/features/objects/output.ts", "../src/features/buckets/output.ts"]
 }

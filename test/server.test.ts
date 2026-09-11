@@ -101,19 +101,22 @@ describe('server over the MCP protocol', () => {
     expect(validate(res.structuredContent), JSON.stringify(validate.errors)).toBe(true);
   });
 
-  it('advertises the object-browser app on list_objects and serves it as a ui:// resource', async () => {
+  it('advertises the shared browser app on list_buckets and list_objects and serves it as a ui:// resource', async () => {
     const { tools } = await client.listTools();
     const listObjects = tools.find((t) => t.name === 'list_objects');
-    expect(listObjects?._meta).toEqual({ ui: { resourceUri: UI.listObjects } });
+    const listBuckets = tools.find((t) => t.name === 'list_buckets');
+    expect(listObjects?._meta).toEqual({ ui: { resourceUri: UI.browser } });
+    expect(listBuckets?._meta).toEqual({ ui: { resourceUri: UI.browser } });
     expect(listObjects?.outputSchema).toMatchObject({ type: 'object', required: expect.arrayContaining(['bucket', 'objects']) });
-    expect(tools.filter((t) => t._meta)).toHaveLength(1);                     // only the one view so far
+    expect(listBuckets?.outputSchema).toMatchObject({ type: 'object', required: ['buckets'] });
+    expect(tools.filter((t) => t._meta).map((t) => t.name).sort()).toEqual(['list_buckets', 'list_objects']);
 
     const { resources } = await client.listResources();
-    expect(resources.map((r) => r.uri)).toContain(UI.listObjects);
-    const { contents } = await client.readResource({ uri: UI.listObjects });
-    expect(contents[0]).toMatchObject({ uri: UI.listObjects, mimeType: 'text/html;profile=mcp-app' });
+    expect(resources.map((r) => r.uri)).toContain(UI.browser);
+    const { contents } = await client.readResource({ uri: UI.browser });
+    expect(contents[0]).toMatchObject({ uri: UI.browser, mimeType: 'text/html;profile=mcp-app' });
     const html = String((contents[0] as { text: string }).text);
-    expect(html).toContain('<title>Storj object browser</title>');
+    expect(html).toContain('<title>Storj browser</title>');
     expect(html).toContain('<script type="module">');
     expect(html).toContain('ui/initialize');                                   // the App SDK is inlined, not linked
     expect(html).not.toMatch(/<script[^>]+src=/);
@@ -133,6 +136,8 @@ describe('server over the MCP protocol', () => {
     });
     const empty = await client.callTool({ name: 'list_objects', arguments: { bucket: 'b', prefix: 'none/' } });
     expect(empty.structuredContent).toEqual({ bucket: 'b', prefix: 'none/', recursive: false, objects: [] });
+    const buckets = await client.callTool({ name: 'list_buckets', arguments: {} });
+    expect(buckets.structuredContent).toEqual({ buckets: [{ name: 'b', created: '2023-11-14T22:13:20.000Z' }] });
   });
 
   it('returns a protocol error (isError) for invalid arguments before the handler runs', async () => {

@@ -57,6 +57,10 @@ try {
   });
   await step('tools/list has 28 tools', async () => { const r = await request('tools/list'); assert(r.tools.length === 28, `got ${r.tools.length}`); });
   await step('create_bucket', async () => assert((await call('create_bucket', { name: bucket })).text.includes('is ready'), 'create'));
+  await step('list_buckets returns structuredContent', async () => {
+    const { structured } = await call('list_buckets', { sort_by: 'created' });
+    assert(structured.buckets.some((b) => b.name === bucket), 'bucket in structured list');
+  });
   await step('stat_bucket', async () => assert((await call('stat_bucket', { name: bucket })).text.includes(bucket), 'stat'));
   const content = Array.from({ length: 50 }, (_, i) => `line ${i + 1}: ${i % 7 === 0 ? 'ERROR needle' : 'ok'}`).join('\n');
   await step('upload_text (2 objects + metadata)', async () => {

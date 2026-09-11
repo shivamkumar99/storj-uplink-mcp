@@ -20,6 +20,16 @@ describe('list / create / stat', () => {
     expect(textOf(await listBuckets())).toBe('No buckets found in this project.');
   });
 
+  it('always returns structuredContent for the browser view', async () => {
+    const res = await listBuckets();
+    expect(res.structuredContent).toEqual({ buckets: [
+      { name: 'alpha', created: '2023-11-14T22:13:20.000Z' }, { name: 'logs-2024', created: '2023-11-14T22:13:20.000Z' },
+      { name: 'logs-2025', created: '2023-11-14T22:13:20.000Z' }, { name: 'zeta', created: '2023-11-14T22:13:20.000Z' },
+    ] });
+    use(fakeProject());
+    expect((await listBuckets()).structuredContent).toEqual({ buckets: [] });
+  });
+
   it('sort_by=created orders oldest first; default keeps Storj name order', async () => {
     use(fakeProject({ buckets: ['zeta', 'alpha', 'mid'], bucketCreated: { zeta: 1_700_000_000, alpha: 1_700_000_200, mid: 1_700_000_100 } }));
     const names = (r: string) => [...r.matchAll(/^  - (\S+)/gm)].map((m) => m[1]);

@@ -1,9 +1,10 @@
 import type { z } from 'zod';
 import { getProject } from '../../core/auth.js';
 import { createProgress } from '../../core/progress.js';
-import { ok, safeCall, type McpTextResponse } from '../../lib/response.js';
+import { ok, okStructured, safeCall, type McpTextResponse } from '../../lib/response.js';
 import { formatBytes, formatTimestamp } from '../../lib/format.js';
 import type { listBucketsSchema, createBucketSchema, statBucketSchema, bucketUsageSchema, deleteBucketSchema } from './schema.js';
+import type { ListBucketsResult } from './output.js';
 
 // ---------------------------------------------------------------------------
 // list_buckets
@@ -15,13 +16,18 @@ export function listBuckets(
   return safeCall(async () => {
     const project = await getProject();
     const buckets = await project.listBuckets(); // Storj's own order: by name
-    if (buckets.length === 0) {
-      return ok('No buckets found in this project.');
-    }
     // Only re-order when asked; ties keep Storj's name order (sort is stable).
     if (args.sort_by === 'created') buckets.sort((a, b) => a.created - b.created);
-    const rows = buckets.map((b) => `  - ${b.name}  (created: ${formatTimestamp(b.created)})`);
-    return ok(`Buckets (${buckets.length}):\n${rows.join('\n')}`);
+
+    // Structured result for clients and the browser view (bucket names are user-chosen, not untrusted).
+    const structured: ListBucketsResult = {
+      buckets: buckets.map((b) => ({ name: b.name, created: formatTimestamp(b.created) })),
+    };
+    if (buckets.length === 0) {
+      return okStructured('No buckets found in this project.', structured);
+    }
+    const rows = structured.buckets.map((b) => `  - ${b.name}  (created: ${b.created})`);
+    return okStructured(`Buckets (${buckets.length}):\n${rows.join('\n')}`, structured);
   });
 }
 

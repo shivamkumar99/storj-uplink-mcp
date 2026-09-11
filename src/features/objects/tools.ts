@@ -15,7 +15,7 @@ export const tools = [
     description: 'List objects in a Storj bucket, optionally filtered by prefix',
     schema: listObjectsSchema,
     outputSchema: listObjectsOutput,
-    ui: { resourceUri: UI.listObjects },
+    ui: { resourceUri: UI.browser },
     handler: listObjects,
   }),
   defineTool({

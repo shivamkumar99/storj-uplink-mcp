@@ -18,7 +18,8 @@ import { registerAppResource, RESOURCE_MIME_TYPE } from '@modelcontextprotocol/e
 
 /** URIs of the views this server ships.  Referenced from tool definitions. */
 export const UI = {
-  listObjects: 'ui://storj-uplink-mcp/list-objects.html',
+  /** Storj browser: renders list_buckets and list_objects results, navigates between them. */
+  browser: 'ui://storj-uplink-mcp/browser.html',
 } as const;
 
 interface View {
@@ -30,10 +31,10 @@ interface View {
 
 const VIEWS: readonly View[] = [
   {
-    name: 'Storj object browser',
-    uri: UI.listObjects,
-    file: 'list-objects.html',
-    description: 'Interactive, sortable view of list_objects results with folder navigation and file preview',
+    name: 'Storj browser',
+    uri: UI.browser,
+    file: 'browser.html',
+    description: 'Interactive, sortable view of buckets and objects: open a bucket, walk prefixes, preview files',
   },
 ];
 

@@ -22,7 +22,7 @@
 - 🗑️ **Batch delete** — delete multiple buckets or objects by name list, prefix, or glob pattern (`*.log`, `tmp-*`)
 - 🔗 **Sharing** — public URLs, restricted access grants, and S3-compatible credentials (least privilege, time-limited, prefix-scoped)
 - 🧹 **Multipart housekeeping** — find and abort incomplete multipart uploads that still cost storage
-- 🖼️ **Interactive object browser** — hosts that support [MCP Apps](https://modelcontextprotocol.io/extensions/apps) render `list_objects` as a sortable, filterable file browser with folder navigation and previews; other hosts get the same result as text
+- 🖼️ **Interactive browser** — hosts that support [MCP Apps](https://modelcontextprotocol.io/extensions/apps) render `list_buckets` and `list_objects` as one sortable, filterable browser: open a bucket, walk folders, preview files; other hosts get the same result as text
 - ⚡ **Configurable chunk size** — tune upload/download buffer size (4 KB – 64 MB) for optimal performance
 - 📊 **Progress and cancellation** — MCP progress notifications for long operations; client cancellation stops transfers mid-stream
 - 🛡️ **Hardened by default** — path-traversal and Zip-Slip guards, symlink-safe directory walks, prompt-injection sanitising of untrusted keys and content, secret redaction, audit log on stderr
@@ -229,7 +229,7 @@ Credentials are stored encrypted at `~/.storj-mcp/config.json` using AES-256-GCM
 
 | Tool | Description |
 |------|-------------|
-| `list_buckets` | List all buckets in your project |
+| `list_buckets` | List all buckets (optionally `sort_by: "created"`). Structured output; renders as an interactive browser in MCP Apps hosts |
 | `create_bucket` | Create a bucket (idempotent) |
 | `stat_bucket` | Name and creation time of one bucket; cheap existence check |
 | `bucket_usage` | Object count and total bytes for a bucket or prefix, like `du` |

@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Storj object browser</title>
+<title>Storj browser</title>
 <style>
   :root { color-scheme: light dark; --fg: #1f2328; --muted: #656d76; --bg: #fff; --line: #d0d7de; --row: #f6f8fa; --accent: #0969da; }
   @media (prefers-color-scheme: dark) { :root { --fg: #e6edf3; --muted: #8b949e; --bg: #0d1117; --line: #30363d; --row: #161b22; --accent: #58a6ff; } }
@@ -11,6 +11,7 @@
   body { margin: 0; padding: 12px; font: 13px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; color: var(--fg); background: var(--bg); }
   header { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; }
   #crumb { font-weight: 600; word-break: break-all; }
+  #crumb a { color: var(--accent); cursor: pointer; text-decoration: none; }
   #crumb span { color: var(--muted); font-weight: 400; }
   button, input { font: inherit; color: inherit; background: var(--row); border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; }
   button { cursor: pointer; } button:disabled { opacity: .5; cursor: default; }
@@ -20,7 +21,7 @@
   th { cursor: pointer; user-select: none; color: var(--muted); font-weight: 600; }
   th.sorted::after { content: " ▾"; } th.sorted.asc::after { content: " ▴"; }
   td.key { white-space: normal; word-break: break-all; }
-  tr.dir td.key { color: var(--accent); cursor: pointer; }
+  tr.dir td.key, tr.bucket td.key { color: var(--accent); cursor: pointer; }
   tr.file td.key { cursor: pointer; }
   tr:hover td { background: var(--row); }
   td.num { text-align: right; font-variant-numeric: tabular-nums; }
@@ -33,17 +34,13 @@
 </head>
 <body>
   <header>
-    <button id="up" title="Go to parent prefix" disabled>↑ Up</button>
+    <button id="up" title="Go up one level" disabled>↑ Up</button>
     <div id="crumb">Loading…</div>
-    <input id="filter" type="search" placeholder="Filter by name…" aria-label="Filter objects" />
+    <input id="filter" type="search" placeholder="Filter by name…" aria-label="Filter" />
     <span id="status"></span>
   </header>
   <table>
-    <thead><tr>
-      <th data-sort="key" class="sorted asc">Name</th>
-      <th data-sort="size_bytes" style="text-align:right">Size</th>
-      <th data-sort="created">Created</th>
-    </tr></thead>
+    <thead id="head"><tr><th>Name</th><th>Created</th></tr></thead>
     <tbody id="rows"></tbody>
   </table>
   <div id="count"></div>

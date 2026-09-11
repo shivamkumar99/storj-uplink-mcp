@@ -1,4 +1,6 @@
 import { defineTool, annotations } from '../../core/registry.js';
+import { UI } from '../../core/ui-resources.js';
+import { listBucketsOutput } from './output.js';
 import {
   listBucketsSchema, createBucketSchema, statBucketSchema, bucketUsageSchema, deleteBucketSchema, deleteBucketsSchema,
 } from './schema.js';
@@ -11,6 +13,8 @@ export const tools = [
     annotations: annotations.readOnly,
     description: 'List all buckets in your Storj project',
     schema: listBucketsSchema,
+    outputSchema: listBucketsOutput,
+    ui: { resourceUri: UI.browser },
     handler: listBuckets,
   }),
   defineTool({

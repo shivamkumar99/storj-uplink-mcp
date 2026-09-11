@@ -26,8 +26,9 @@ src/
       <tool>.ts       one file per complex tool (e.g. delete-many.ts, grep.ts)
       tools.ts        defineTool() list — the only file server.ts imports
 ui/
-  <feature>/          MCP Apps views (browser code, own tsconfig with DOM lib),
-                      bundled by scripts/build-ui.mjs into dist/ui/*.html
+  browser/            the MCP Apps view (browser code, own tsconfig with DOM
+                      lib) shared by list_buckets and list_objects, bundled by
+                      scripts/build-ui.mjs into dist/ui/browser.html
 test/                 mirrors src/ one-to-one (test/core, test/lib, …)
 ```
 
@@ -43,8 +44,8 @@ test/                 mirrors src/ one-to-one (test/core, test/lib, …)
 - **Same file names in every feature.** Anyone can open any feature and know
   where the schema, the constants, the handlers and the registration are.
 - **UI stays outside `src/`.** It needs the DOM lib and a bundler, and must
-  never be compiled by the server's `tsc`. The `ui/<feature>` folder name
-  mirrors `src/features/<feature>`.
+  never be compiled by the server's `tsc`. Views import only the feature
+  `output.ts` files (type-only) so the view and the tool cannot drift.
 - **Adding a tool**: add the schema to `schema.ts`, the handler to
   `handlers.ts` (or its own file), and one `defineTool()` entry to `tools.ts`.
   Nothing else changes.
