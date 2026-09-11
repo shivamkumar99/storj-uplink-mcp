@@ -24,7 +24,8 @@
     "typecheck": "tsc --noEmit -p tsconfig.test.json && tsc --noEmit -p ui/tsconfig.json",
     "knip": "knip",
     "inspect": "npx @modelcontextprotocol/inspector node dist/index.js",
-    "build:ui": "node scripts/build-ui.mjs"
+    "build:ui": "node scripts/build-ui.mjs",
+    "docker:build": "docker build --platform linux/amd64 -f infra/Dockerfile -t storj-uplink-mcp:local ."
   },
   "repository": {
     "type": "git",

@@ -1,0 +1,11 @@
+# Build context for infra/Dockerfile — only what the build stage needs.
+*
+!package.json
+!package-lock.json
+!tsconfig.json
+!scripts/
+!src/
+!ui/
+# never send these even if a rule above matched a parent
+**/node_modules
+**/.DS_Store

@@ -1,0 +1,41 @@
+# Hardened runtime settings for the stdio MCP server.
+#
+# Because the server talks over stdin/stdout, it is started per session by the
+# AI client rather than kept running:
+#
+#   docker compose -f infra/docker-compose.yml run --rm storj-mcp
+#
+# Put that command in your MCP client config (see infra/README.md).
+# Credentials come from infra/.env (copy infra/.env.example; never commit it).
+
+services:
+  storj-mcp:
+    image: storj-uplink-mcp:local
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile
+    platform: linux/amd64          # prebuilt native addon is linux-x64 only
+    env_file:
+      - .env
+    stdin_open: true               # stdio transport
+    tty: false                     # a TTY would corrupt the JSON-RPC stream
+
+    # --- hardening ---------------------------------------------------------
+    read_only: true                # immutable root filesystem
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=64m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    user: "65532:65532"            # nonroot (already the image default)
+    pids_limit: 128
+    mem_limit: 512m
+    cpus: "1.0"
+    ulimits:
+      nofile:
+        soft: 1024
+        hard: 1024
+    # The server needs outbound HTTPS/QUIC to Storj satellites and nodes; no
+    # inbound ports are published.
+    ports: []

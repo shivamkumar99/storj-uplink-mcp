@@ -4,3 +4,6 @@ dist/
 .scannerwork/
 coverage/
 test/.tmp/
+
+# Docker credentials for the container (see infra/README.md)
+infra/.env
