@@ -47,7 +47,7 @@ export interface Tool {
 
 /** Define a tool with full type inference from its schema. */
 export function defineTool<S extends ZodRawShape>(def: ToolDefinition<S>): Tool {
-  return def as unknown as Tool;
+  return def;
 }
 
 /**

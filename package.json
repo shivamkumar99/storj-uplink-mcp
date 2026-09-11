@@ -17,7 +17,8 @@
     "build": "tsc && chmod +x dist/index.js dist/setup.js",
     "dev": "tsc --watch",
     "postinstall": "node scripts/postinstall.js",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "npm run build",
+    "lint": "eslint src"
   },
   "repository": {
     "type": "git",
@@ -35,9 +36,12 @@
     "zod": "^3.25.0"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@types/node": "^20",
     "@types/picomatch": "^4.0.3",
-    "typescript": "^5"
+    "eslint": "^10.10.0",
+    "typescript": "^5",
+    "typescript-eslint": "^8.70.0"
   },
   "keywords": [
     "storj",

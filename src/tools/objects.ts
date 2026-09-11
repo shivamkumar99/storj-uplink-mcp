@@ -10,7 +10,6 @@ import {
   srcKeyField,
   dstBucketField,
   dstKeyField,
-  metadataField,
 } from './schemas.js';
 import { matchGlob } from './glob.js';
 import { runBatch, formatBatchReport } from './batch.js';

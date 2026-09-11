@@ -34,14 +34,14 @@ export interface ObjectRef {
 export interface ChunkSource {
   /** Total size in bytes, known upfront so progress can show a percentage. */
   readonly size: number;
-  chunks(chunkSize: number): AsyncIterable<Buffer>;
+  chunks(chunkSize: number): Iterable<Buffer> | AsyncIterable<Buffer>;
 }
 
 /** Data already fully in memory — sliced so each native write stays bounded. */
 export function bufferSource(data: Buffer): ChunkSource {
   return {
     size: data.length,
-    async *chunks(chunkSize) {
+    *chunks(chunkSize) {
       for (let offset = 0; offset < data.length; offset += chunkSize) {
         yield data.subarray(offset, Math.min(offset + chunkSize, data.length));
       }
@@ -198,7 +198,7 @@ async function drainDownload(
         ({ bytesRead } = await download.read(buf, chunkSize));
       } catch (err: unknown) {
         const e = err as Record<string, unknown>;
-        bytesRead = typeof e['bytesRead'] === 'number' ? (e['bytesRead'] as number) : 0;
+        bytesRead = typeof e['bytesRead'] === 'number' ? e['bytesRead'] : 0;
       }
       if (bytesRead > 0) {
         onChunk(buf, bytesRead);

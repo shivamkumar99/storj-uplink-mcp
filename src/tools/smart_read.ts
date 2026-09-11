@@ -44,7 +44,7 @@ async function drainChunked(
       } catch (err: unknown) {
         // Storj SDK signals EOF by throwing — extract any partial bytes
         const e = err as Record<string, unknown>;
-        bytesRead = typeof e['bytesRead'] === 'number' ? (e['bytesRead'] as number) : 0;
+        bytesRead = typeof e['bytesRead'] === 'number' ? e['bytesRead'] : 0;
       }
       if (bytesRead > 0) {
         const shouldContinue = onChunk(Buffer.from(buf.subarray(0, bytesRead)));
@@ -223,7 +223,6 @@ export function peekObjectTail(
     progress.done(`Read ${result.length} lines from tail of "${args.key}"`);
 
     // Approximate absolute line numbers (we don't know how many lines preceded the scan window)
-    const approxStartLine = offset > 0 ? '~' : '';
     const footer = `(showing last ${result.length} lines — file is ${formatBytes(totalSize)})`;
 
     const body = result

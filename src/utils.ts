@@ -54,6 +54,14 @@ export function sanitizeOutput(text: string): string {
 }
 
 // ---------------------------------------------------------------------------
+// Normalise any thrown value to an Error so promise rejections always carry one.
+// ---------------------------------------------------------------------------
+
+export function toError(err: unknown): Error {
+  return err instanceof Error ? err : new Error(String(err));
+}
+
+// ---------------------------------------------------------------------------
 // Format any error into a readable string and return as MCP response.
 // Never throws — Claude sees the error message instead of a crash.
 // Secrets are redacted before returning.
@@ -108,7 +116,7 @@ export function withTimeout<T>(
     );
     promise.then(
       (val) => { clearTimeout(timer); resolve(val); },
-      (err: unknown) => { clearTimeout(timer); reject(err); },
+      (err: unknown) => { clearTimeout(timer); reject(toError(err)); },
     );
   });
 }

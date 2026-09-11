@@ -9,6 +9,8 @@
  *   const result = await guard(() => myToolHandler(args));
  */
 
+import { toError } from './utils.js';
+
 // ---------------------------------------------------------------------------
 // Configuration
 // ---------------------------------------------------------------------------
@@ -42,7 +44,7 @@ export function guard<T>(fn: () => Promise<T>): Promise<T> {
       _active++;
       fn().then(
         (val) => { _active--; drain(); resolve(val); },
-        (err: unknown) => { _active--; drain(); reject(err); },
+        (err: unknown) => { _active--; drain(); reject(toError(err)); },
       );
     };
 
