@@ -1,9 +1,12 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { bufferSource, fileSource, memorySink, fileSink, uploadObject, downloadObject } from '../src/tools/transfer.js';
 import { fakeProject } from './helpers/fake-project.js';
+import { runWithRequestContext } from '../src/context.js';
+
+const cancelling = (ac: AbortController) => ({ requestId: 1, signal: ac.signal, sendNotification: async () => {} });
 
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'transfer-'));
 const collect = async (it: Iterable<Buffer> | AsyncIterable<Buffer>) => { const out: Buffer[] = []; for await (const c of it) out.push(c); return out; };
@@ -62,6 +65,13 @@ describe('uploadObject', () => {
     expect(uploads[0].opts).toBeUndefined();
   });
 
+  it('aborts the Storj upload when the client cancels mid-stream', async () => {
+    const { project, uploads } = fakeProject(); const ac = new AbortController();
+    const src = { size: 2, async *chunks() { yield Buffer.from('a'); ac.abort(); yield Buffer.from('b'); } };
+    await expect(runWithRequestContext(cancelling(ac), () => uploadObject(project, { bucket: 'b', key: 'k' }, src))).rejects.toThrow('Cancelled by client');
+    expect(uploads[0]).toMatchObject({ committed: false, aborted: true });
+  });
+
   it('aborts (never commits) when the source fails mid-stream', async () => {
     const { project, uploads } = fakeProject();
     const failing = { size: 3, async *chunks() { yield Buffer.from('a'); throw new Error('disk gone'); } };
@@ -87,6 +97,14 @@ describe('downloadObject', () => {
     const sink = memorySink();
     expect(await downloadObject(project, { bucket: 'b', key: 'k' }, sink, 4096)).toBe(8192); // last full read → next read throws EOF
     expect(sink.result().equals(data)).toBe(true);
+  });
+
+  it('stops reading and closes both ends when the client cancels', async () => {
+    const { project, downloads } = fakeProject({ objects: { 'b/k': { data: Buffer.from('c'.repeat(10_000)) } } }); const ac = new AbortController();
+    const sink = { open() {}, write() { ac.abort(); }, close: vi.fn() };
+    await expect(runWithRequestContext(cancelling(ac), () => downloadObject(project, { bucket: 'b', key: 'k' }, sink, 4096))).rejects.toThrow('Cancelled by client');
+    expect(downloads[0].closed).toBe(true);
+    expect(sink.close).toHaveBeenCalledTimes(1);
   });
 
   it('never creates the destination file when the object is missing', async () => {

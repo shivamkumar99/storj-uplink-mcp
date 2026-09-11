@@ -1,50 +1,23 @@
 /**
  * @file progress.ts
- * @brief Progress reporting via MCP logging notifications
+ * @brief Progress reporting for long-running tool calls.
  *
- * Sends `notifications/message` (logging) to the connected MCP client so
- * the user can see that a long-running operation is still in progress.
+ * Two channels, both throttled to one message per THROTTLE_MS:
+ *   • stderr — the recommended log channel for stdio MCP servers.
+ *   • MCP `notifications/progress` — sent only when the client supplied a
+ *     progressToken for the current request. Clients render these as progress
+ *     bars and may reset their request timeout while work is visibly moving.
  *
- * Messages are throttled: at most one per THROTTLE_MS (default 5 s) so we
- * don't flood the client.  The first message for a new operation is sent
- * immediately.
+ * (Earlier versions used the Logging feature's `notifications/message`, which
+ * is now deprecated in MCP and was never delivered anyway because the server
+ * did not declare the logging capability.)
  */
 
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { currentRequest } from './context.js';
+import { formatBytes } from './utils.js';
 
-/** The low-level server, reached through McpServer so the deprecated `Server` symbol is never named. */
-type LowLevelServer = McpServer['server'];
-
-// ---------------------------------------------------------------------------
-// Singleton server reference — set once from server.ts after createServer()
-// ---------------------------------------------------------------------------
-
-let _server: LowLevelServer | null = null;
-
-export function setServer(server: LowLevelServer): void {
-  _server = server;
-}
-
-/** Fire-and-forget — we never want a logging failure to break a tool. */
-function send(message: string): void {
-  if (!_server) return;
-  _server.sendLoggingMessage({ level: 'info', data: message }).catch(() => {});
-}
-
-// ---------------------------------------------------------------------------
-// Throttle interval — only send a progress message every N ms
-// ---------------------------------------------------------------------------
-
+/** Only send a progress message every N ms so we never flood the client. */
 const THROTTLE_MS = 5_000;
-
-// ---------------------------------------------------------------------------
-// ProgressReporter — reusable, per-operation progress tracker
-//
-// Usage:
-//   const p = createProgress('Uploading');
-//   p.update(chunkBytes, totalBytes);   // throttled — safe to call on every chunk
-//   p.done('Upload complete');          // sends one final message
-// ---------------------------------------------------------------------------
 
 export interface ProgressReporter {
   /** Report incremental progress.  `total` may be 0 if unknown. */
@@ -54,38 +27,45 @@ export interface ProgressReporter {
 }
 
 export function createProgress(label: string): ProgressReporter {
+  const ctx = currentRequest();
   let lastSentAt = 0;
+  let lastProgress = -1;
+  let lastTotal = 0;
+
+  function emit(current: number, total: number, message: string): void {
+    console.error(`[storj-mcp] ${message}`);
+    if (ctx?.progressToken === undefined) return;
+
+    // The spec requires `progress` to increase with every notification, even
+    // when the total is unknown (e.g. "listing…" ticks that report 0 of 0).
+    const progress = Math.max(current, lastProgress + 1);
+    lastProgress = progress;
+    if (total > 0) lastTotal = Math.max(total, progress);
+
+    ctx
+      .sendNotification({
+        method: 'notifications/progress',
+        params: { progressToken: ctx.progressToken, progress, ...(lastTotal > 0 ? { total: lastTotal } : {}), message },
+      })
+      .catch(() => {}); // never let a notification failure break a tool
+  }
 
   return {
-    update(current: number, total: number, detail?: string): void {
+    update(current, total, detail) {
       const now = Date.now();
       if (now - lastSentAt < THROTTLE_MS) return;
       lastSentAt = now;
 
-      let msg: string;
-      if (total > 0) {
-        const pct = Math.round((current / total) * 100);
-        msg = `⏳ ${label}: ${formatProgress(current)} / ${formatProgress(total)} (${pct}%)`;
-      } else {
-        msg = `⏳ ${label}: ${formatProgress(current)} so far…`;
-      }
-      if (detail) msg += ` — ${detail}`;
-      send(msg);
+      const body = total > 0
+        ? `${formatBytes(current)} / ${formatBytes(total)} (${Math.round((current / total) * 100)}%)`
+        : `${formatBytes(current)} so far…`;
+      const suffix = detail ? ` — ${detail}` : '';
+      emit(current, total, `⏳ ${label}: ${body}${suffix}`);
     },
 
-    done(message: string): void {
-      send(`✅ ${message}`);
+    done(message) {
+      // Final notification lands on the total when one was reported.
+      emit(Math.max(lastTotal, lastProgress + 1), lastTotal, `✅ ${message}`);
     },
   };
-}
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function formatProgress(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
 }

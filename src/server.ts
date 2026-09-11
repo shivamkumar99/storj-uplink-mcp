@@ -1,5 +1,4 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { setServer } from './progress.js';
 import { registerTools, type Tool } from './registry.js';
 
 import { tools as bucketTools } from './tools/buckets.js';
@@ -34,9 +33,6 @@ export function createServer(): McpServer {
     name: 'storj-uplink-mcp',
     version: '1.0.0',
   });
-
-  // Wire up progress reporting so tool handlers can send logging notifications
-  setServer(server.server);
 
   registerTools(server, TOOLS);
 

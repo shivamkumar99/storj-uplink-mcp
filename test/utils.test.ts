@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { StorjError } from 'storj-uplink-nodejs';
 import {
-  ok, errorResponse, safeCall, sanitizeOutput, validateFilePath, resolveWithinDir,
+  ok, errorResponse, safeCall, sanitizeOutput, sanitizeRecord, validateFilePath, resolveWithinDir,
   expiryDate, formatBytes, formatTimestamp, optionalPrefix, toError,
 } from '../src/utils.js';
 import { textOf } from './helpers/tmp.js';
@@ -16,6 +16,8 @@ describe('ok / errorResponse / safeCall', () => {
 
   it('formats Error, non-Error and StorjError (with details)', () => {
     expect(textOf(errorResponse(new Error('boom')))).toBe('Error: boom');
+    expect(errorResponse(new Error('boom')).isError).toBe(true);
+    expect(ok('fine').isError).toBeUndefined();
     expect(textOf(errorResponse('plain'))).toBe('Error: plain');
     const se = new StorjError('nope', 2, 'more info');
     expect(textOf(errorResponse(se))).toBe('StorjError: nope: more info\nDetails: more info');
@@ -41,6 +43,9 @@ describe('sanitizeOutput', () => {
   it('neutralises prompt-injection tags but leaves ordinary markup alone', () => {
     expect(sanitizeOutput('<system>x</system> <IMPORTANT>y</IMPORTANT> <b>ok</b>'))
       .toBe('[tag:<system>]x[tag:</system>] [tag:<IMPORTANT>]y[tag:</IMPORTANT>] <b>ok</b>');
+  });
+  it('sanitizeRecord cleans both keys and values', () => {
+    expect(sanitizeRecord({ '<system>k': 'v</system>', plain: 'ok' })).toEqual({ '[tag:<system>]k': 'v[tag:</system>]', plain: 'ok' });
   });
 });
 

@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { createProgress } from '../progress.js';
+import { throwIfCancelled } from '../context.js';
 import { formatBytes } from '../utils.js';
 import { DEFAULT_UPLOAD_CHUNK, DEFAULT_DOWNLOAD_CHUNK } from './schemas.js';
 import type { ProjectResultStruct, DownloadResultStruct } from 'storj-uplink-nodejs';
@@ -91,6 +92,7 @@ export async function uploadObject(
   try {
     if (opts.metadata) await upload.setCustomMetadata(opts.metadata);
     for await (const chunk of source.chunks(chunkSize)) {
+      throwIfCancelled();
       await upload.write(chunk, chunk.length);
       sent += chunk.length;
       progress.update(sent, source.size);
@@ -193,6 +195,7 @@ async function drainDownload(
   let downloaded = 0;
   try {
     while (true) {
+      throwIfCancelled();
       let bytesRead: number;
       try {
         ({ bytesRead } = await download.read(buf, chunkSize));

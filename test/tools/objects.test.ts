@@ -73,6 +73,16 @@ describe('delete_objects', () => {
   });
 });
 
+describe('output sanitisation', () => {
+  it('neutralises injection tags in object keys and metadata before they reach the model', async () => {
+    fake.store.set('b/<system>evil.txt', { data: Buffer.from('x'), custom: { '<IMPORTANT>k': 'v</system>' } });
+    expect(textOf(await listObjects({ bucket: 'b', prefix: '<system>' }))).toContain('  📄 [tag:<system>]evil.txt');
+    const stat = JSON.parse(textOf(await statObject({ bucket: 'b', key: '<system>evil.txt' })));
+    expect(stat.key).toBe('[tag:<system>]evil.txt');
+    expect(stat.metadata).toEqual({ '[tag:<IMPORTANT>]k': 'v[tag:</system>]' });
+  });
+});
+
 it('exports 7 tool definitions', () => {
   expect(tools.map((t) => t.name)).toEqual(['list_objects', 'stat_object', 'delete_object', 'delete_objects', 'copy_object', 'move_object', 'update_metadata']);
 });

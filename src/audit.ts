@@ -2,10 +2,14 @@
  * @file audit.ts
  * @brief Audit logging for MCP tool invocations.
  *
- * Logs every tool call to stderr with tool name, key parameters,
- * and timestamp.  Sensitive fields (access grants, file content)
- * are redacted.  OWASP MCP: monitoring & auditing.
+ * Every tool call is logged to stderr — the recommended log channel for
+ * stdio MCP servers — with an ISO timestamp, the MCP request id (for
+ * correlating with client-side logs), the tool name and its key parameters.
+ * Sensitive fields (access grants, file content) are redacted.
+ * OWASP MCP: monitoring & auditing.
  */
+
+import { currentRequest } from './context.js';
 
 // ---------------------------------------------------------------------------
 // Fields that should never appear in audit logs
@@ -87,6 +91,8 @@ export function auditLog(tool: string, params: Record<string, unknown> = {}): vo
     parts.push(formatParam(key, value));
   }
 
+  const requestId = currentRequest()?.requestId;
+  const request = requestId === undefined ? '' : ` [req ${String(requestId)}]`;
   const paramStr = parts.length > 0 ? ` ${parts.join(' ')}` : '';
-  console.error(`[storj-mcp] AUDIT: ${tool}${paramStr}`);
+  console.error(`[storj-mcp] AUDIT ${new Date().toISOString()}${request} ${tool}${paramStr}`);
 }

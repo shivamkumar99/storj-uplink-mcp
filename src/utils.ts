@@ -8,6 +8,8 @@ import { StorjError } from 'storj-uplink-nodejs';
 export interface McpTextResponse {
   [key: string]: unknown;
   content: Array<{ type: 'text'; text: string }>;
+  /** Set on tool execution failures so clients and the model can tell them from normal output. */
+  isError?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -52,6 +54,11 @@ export function sanitizeOutput(text: string): string {
   return text.replace(INJECTION_TAG_RE, (tag) => `[tag:${tag}]`);
 }
 
+/** Sanitise every key and value of a string record (e.g. custom metadata from a shared bucket). */
+export function sanitizeRecord(record: Record<string, string>): Record<string, string> {
+  return Object.fromEntries(Object.entries(record).map(([k, v]) => [sanitizeOutput(k), sanitizeOutput(v)]));
+}
+
 // ---------------------------------------------------------------------------
 // Normalise any thrown value to an Error so promise rejections always carry one.
 // ---------------------------------------------------------------------------
@@ -78,7 +85,7 @@ export function errorResponse(err: unknown): McpTextResponse {
     message = `Error: ${String(err)}`;
   }
 
-  return { content: [{ type: 'text', text: redactSecrets(message) }] };
+  return { content: [{ type: 'text', text: redactSecrets(message) }], isError: true };
 }
 
 // ---------------------------------------------------------------------------

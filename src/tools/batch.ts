@@ -1,4 +1,6 @@
 import { createProgress } from '../progress.js';
+import { throwIfCancelled } from '../context.js';
+import { sanitizeOutput } from '../utils.js';
 
 // ---------------------------------------------------------------------------
 // Batch execution — Template Method for "do X to each of N items".
@@ -48,6 +50,7 @@ export async function runBatch<T>(items: T[], spec: BatchSpec<T>): Promise<Batch
   const result: BatchResult = { total: items.length, succeeded: [], failed: [], totalBytes: 0 };
 
   for (let i = 0; i < items.length; i++) {
+    throwIfCancelled();
     const item = items[i];
     const name = spec.itemName(item);
     progress.update(i, items.length, `${spec.verb} "${name}"…`);
@@ -81,11 +84,11 @@ export function formatBatchReport(result: BatchResult, opts: BatchReportOptions)
   }
   if (opts.successLabel && result.succeeded.length > 0) {
     lines.push('', opts.successLabel);
-    for (const name of result.succeeded) lines.push(`  - ${name}`);
+    for (const name of result.succeeded) lines.push(`  - ${sanitizeOutput(name)}`);
   }
   if (result.failed.length > 0) {
     lines.push('', '❌ Failed:');
-    for (const f of result.failed) lines.push(`  - ${f.name}: ${f.error}`);
+    for (const f of result.failed) lines.push(`  - ${sanitizeOutput(f.name)}: ${sanitizeOutput(f.error)}`);
   }
   return lines.join('\n');
 }

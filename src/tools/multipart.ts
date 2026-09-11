@@ -1,8 +1,8 @@
 import { z } from 'zod';
-import { defineTool } from '../registry.js';
+import { defineTool, annotations } from '../registry.js';
 import { listMultipartUploads, MultipartUpload } from 'storj-uplink-nodejs';
 import { getProject } from '../auth.js';
-import { ok, safeCall, formatTimestamp, optionalPrefix, type McpTextResponse } from '../utils.js';
+import { ok, safeCall, formatTimestamp, optionalPrefix, sanitizeOutput, type McpTextResponse } from '../utils.js';
 import { createProgress } from '../progress.js';
 import { bucketField, keyField } from './schemas.js';
 
@@ -41,7 +41,7 @@ export function listPendingUploads(
     }
 
     const rows = pending.map(
-      (u) => `  - ${u.key}\n      upload_id: ${u.uploadId}\n      started:   ${formatTimestamp(u.system.created)}`,
+      (u) => `  - ${sanitizeOutput(u.key)}\n      upload_id: ${sanitizeOutput(u.uploadId)}\n      started:   ${formatTimestamp(u.system.created)}`,
     );
     return ok(
       `Pending multipart uploads in "${args.bucket}" (${pending.length}):\n` +
@@ -84,12 +84,14 @@ export function abortMultipartUpload(
 export const tools = [
   defineTool({
     name: 'list_multipart_uploads',
+    annotations: annotations.readOnly,
     description: 'List pending (incomplete) multipart uploads in a bucket. These are invisible to list_objects but still consume storage until aborted or committed.',
     schema: listMultipartUploadsSchema,
     handler: listPendingUploads,
   }),
   defineTool({
     name: 'abort_multipart_upload',
+    annotations: annotations.deletes,
     description: 'Abort and discard one incomplete multipart upload (identified by key + upload_id from list_multipart_uploads), freeing the storage it holds.',
     schema: abortMultipartUploadSchema,
     handler: abortMultipartUpload,

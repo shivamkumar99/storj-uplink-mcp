@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { runBatch, formatBatchReport, type BatchResult } from '../src/tools/batch.js';
+import { runWithRequestContext } from '../src/context.js';
 
 describe('runBatch', () => {
   it('runs every item, never stops on a failure, and sums numeric returns', async () => {
@@ -16,6 +17,14 @@ describe('runBatch', () => {
   it('stringifies non-Error throwables', async () => {
     const r = await runBatch([1], { label: 'L', verb: 'v', itemName: String, op: async () => { throw 'plain'; }, done: () => 'd' });
     expect(r.failed).toEqual([{ name: '1', error: 'plain' }]);
+  });
+
+  it('stops as soon as the client cancels the request', async () => {
+    const ac = new AbortController(); const calls: string[] = [];
+    const run = runWithRequestContext({ requestId: 1, signal: ac.signal, sendNotification: async () => {} }, () =>
+      runBatch(['a', 'b', 'c'], { label: 'L', verb: 'v', itemName: (x) => x, op: async (x) => { calls.push(x); ac.abort(); }, done: () => 'd' }));
+    await expect(run).rejects.toThrow('Cancelled by client');
+    expect(calls).toEqual(['a']);
   });
 
   it('handles an empty list', async () => {
@@ -36,6 +45,11 @@ describe('formatBatchReport', () => {
   it('omits the success list when no label is given, and inserts notes after the header', () => {
     const up: BatchResult = { total: 2, succeeded: ['k1'], failed: [{ name: 'k2', error: 'bad' }], totalBytes: 5 };
     expect(formatBatchReport(up, { header: 'H', notes: ['⚠️  capped'] })).toBe(['H', '', '⚠️  capped', '', '❌ Failed:', '  - k2: bad'].join('\n'));
+  });
+
+  it('sanitises untrusted names and errors (object keys may carry injection tags)', () => {
+    expect(formatBatchReport({ total: 2, succeeded: ['<system>a'], failed: [{ name: 'b</system>', error: '<IMPORTANT>x' }], totalBytes: 0 }, { header: 'H', successLabel: '✅ Deleted:' }))
+      .toBe(['H', '', '✅ Deleted:', '  - [tag:<system>]a', '', '❌ Failed:', '  - b[tag:</system>]: [tag:<IMPORTANT>]x'].join('\n'));
   });
 
   it('never prints a dangling success label or an empty ❌ block', () => {

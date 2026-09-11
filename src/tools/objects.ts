@@ -1,7 +1,7 @@
 import { z } from 'zod';
-import { defineTool } from '../registry.js';
+import { defineTool, annotations } from '../registry.js';
 import { getProject } from '../auth.js';
-import { ok, safeCall, formatBytes, formatTimestamp, optionalPrefix, type McpTextResponse } from '../utils.js';
+import { ok, safeCall, formatBytes, formatTimestamp, optionalPrefix, sanitizeOutput, sanitizeRecord, type McpTextResponse } from '../utils.js';
 import { createProgress } from '../progress.js';
 import {
   bucketField,
@@ -72,8 +72,8 @@ export function listObjects(
     }
     progress.done(`Listed ${objects.length} objects in "${args.bucket}"`);
     const rows = objects.map((o) => {
-      if (o.isPrefix) return `  📁 ${o.key}`;
-      return `  📄 ${o.key}  (${formatBytes(o.system.contentLength)}, created: ${formatTimestamp(o.system.created)})`;
+      if (o.isPrefix) return `  📁 ${sanitizeOutput(o.key)}`;
+      return `  📄 ${sanitizeOutput(o.key)}  (${formatBytes(o.system.contentLength)}, created: ${formatTimestamp(o.system.created)})`;
     });
     return ok(`Objects in "${args.bucket}" (${objects.length}):\n${rows.join('\n')}`);
   });
@@ -95,13 +95,13 @@ export function statObject(
     const project = await getProject();
     const info = await project.statObject(args.bucket, args.key);
     const result = {
-      key: info.key,
+      key: sanitizeOutput(info.key),
       bucket: args.bucket,
       size: formatBytes(info.system.contentLength),
       size_bytes: info.system.contentLength,
       created: formatTimestamp(info.system.created),
       expires: formatTimestamp(info.system.expires),
-      metadata: info.custom,
+      metadata: sanitizeRecord(info.custom),
     };
     return ok(result);
   });
@@ -258,42 +258,49 @@ export function deleteObjects(
 export const tools = [
   defineTool({
     name: 'list_objects',
+    annotations: annotations.readOnly,
     description: 'List objects in a Storj bucket, optionally filtered by prefix',
     schema: listObjectsSchema,
     handler: listObjects,
   }),
   defineTool({
     name: 'stat_object',
+    annotations: annotations.readOnly,
     description: 'Get information about a Storj object: size, creation date, expiry, and custom metadata',
     schema: statObjectSchema,
     handler: statObject,
   }),
   defineTool({
     name: 'delete_object',
+    annotations: annotations.deletes,
     description: 'Delete an object from a Storj bucket',
     schema: deleteObjectSchema,
     handler: deleteObject,
   }),
   defineTool({
     name: 'delete_objects',
+    annotations: annotations.deletes,
     description: 'Batch-delete multiple objects by key list, prefix, or glob pattern (e.g. "*.log", "photos/**/*.tmp"). Shows progress and reports per-object success/failure.',
     schema: deleteObjectsSchema,
     handler: deleteObjects,
   }),
   defineTool({
     name: 'copy_object',
+    annotations: annotations.overwrites,
     description: 'Copy an object to a new key or bucket on Storj',
     schema: copyObjectSchema,
     handler: copyObject,
   }),
   defineTool({
     name: 'move_object',
+    annotations: annotations.deletes,
     description: 'Move or rename an object on Storj',
     schema: moveObjectSchema,
     handler: moveObject,
   }),
   defineTool({
     name: 'update_metadata',
+    annotations: annotations.overwrites,
     description: 'Update custom metadata key-value pairs on an existing Storj object',
     schema: updateMetadataSchema,
     handler: updateMetadata,

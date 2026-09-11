@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { defineTool } from '../registry.js';
+import { defineTool, annotations } from '../registry.js';
 import { getProject } from '../auth.js';
 import { ok, safeCall, formatBytes, sanitizeOutput, type McpTextResponse } from '../utils.js';
 import { createProgress } from '../progress.js';
@@ -441,6 +441,7 @@ export function grepObject(
 export const tools = [
   defineTool({
     name: 'peek_object_head',
+    annotations: annotations.readOnly,
     description:
       'Read the first N lines of a Storj object without downloading the whole file. ' +
       'Only fetches the minimum bytes needed. ' +
@@ -450,6 +451,7 @@ export const tools = [
   }),
   defineTool({
     name: 'peek_object_tail',
+    annotations: annotations.readOnly,
     description:
       'Read the last N lines of a Storj object without downloading the whole file. ' +
       'Only fetches the final 512 KB regardless of total size. ' +
@@ -459,6 +461,7 @@ export const tools = [
   }),
   defineTool({
     name: 'grep_object',
+    annotations: annotations.readOnly,
     description:
       'Stream-search a Storj object for a keyword and return only the matching lines. ' +
       'Aborts as soon as max_matches is reached — never downloads the full file. ' +
