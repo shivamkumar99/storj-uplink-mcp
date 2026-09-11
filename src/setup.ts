@@ -19,6 +19,7 @@ import {
   configExists,
   type StorjMcpConfig,
 } from './config.js';
+import { ENV, readStorjEnv, hasPassphraseCredentials } from './env.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -47,20 +48,18 @@ function showStatus(): void {
   print('  Storj MCP Server — Credential Status');
   hr();
 
-  const hasEnvGrant = Boolean(process.env['STORJ_ACCESS_GRANT']);
-  const hasEnvPassphrase =
-    Boolean(process.env['STORJ_SATELLITE']) &&
-    Boolean(process.env['STORJ_API_KEY']) &&
-    Boolean(process.env['STORJ_PASSPHRASE']);
+  const env = readStorjEnv();
+  const hasEnvGrant = Boolean(env.accessGrant);
+  const hasEnvPassphrase = hasPassphraseCredentials(env);
   const hasConfigFile = configExists();
 
   if (hasEnvGrant) {
     print('  Active source : environment variable');
-    print('  Variable      : STORJ_ACCESS_GRANT');
+    print(`  Variable      : ${ENV.ACCESS_GRANT}`);
     print('  Auth type     : access_grant');
   } else if (hasEnvPassphrase) {
     print('  Active source : environment variables');
-    print('  Variables     : STORJ_SATELLITE, STORJ_API_KEY, STORJ_PASSPHRASE');
+    print(`  Variables     : ${ENV.SATELLITE}, ${ENV.API_KEY}, ${ENV.PASSPHRASE}`);
     print('  Auth type     : passphrase');
   } else if (hasConfigFile) {
     const config = loadConfig();

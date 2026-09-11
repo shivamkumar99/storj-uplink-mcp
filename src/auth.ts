@@ -1,5 +1,6 @@
 import { Uplink, type AccessResultStruct, type ProjectResultStruct } from 'storj-uplink-nodejs';
 import { loadConfig, configPath } from './config.js';
+import { ENV, readStorjEnv, hasPassphraseCredentials } from './env.js';
 
 // ---------------------------------------------------------------------------
 // Singleton state — lazy-initialized on first tool call
@@ -11,29 +12,26 @@ let _access: AccessResultStruct | null = null;
 // ---------------------------------------------------------------------------
 // Credential resolution
 //
-// Priority:
-//   1. STORJ_ACCESS_GRANT env var
-//   2. STORJ_SATELLITE + STORJ_API_KEY + STORJ_PASSPHRASE env vars
+// Priority (variable names live in env.ts):
+//   1. ENV.ACCESS_GRANT
+//   2. ENV.SATELLITE + ENV.API_KEY + ENV.PASSPHRASE
 //   3. ~/.storj-mcp/config.json (written by setup wizard)
 // ---------------------------------------------------------------------------
 
 async function resolveAccess(): Promise<AccessResultStruct> {
   const uplink = new Uplink();
+  const env = readStorjEnv();
 
   // Priority 1: access grant env var
-  const accessGrant = process.env['STORJ_ACCESS_GRANT'];
-  if (accessGrant) {
-    console.error('[storj-mcp] Auth: using STORJ_ACCESS_GRANT env var');
-    return uplink.parseAccess(accessGrant);
+  if (env.accessGrant) {
+    console.error(`[storj-mcp] Auth: using ${ENV.ACCESS_GRANT} env var`);
+    return uplink.parseAccess(env.accessGrant);
   }
 
   // Priority 2: satellite + apiKey + passphrase env vars
-  const satellite = process.env['STORJ_SATELLITE'];
-  const apiKey = process.env['STORJ_API_KEY'];
-  const passphrase = process.env['STORJ_PASSPHRASE'];
-  if (satellite && apiKey && passphrase) {
-    console.error('[storj-mcp] Auth: using STORJ_SATELLITE/API_KEY/PASSPHRASE env vars');
-    return uplink.requestAccessWithPassphrase(satellite, apiKey, passphrase);
+  if (hasPassphraseCredentials(env)) {
+    console.error(`[storj-mcp] Auth: using ${ENV.SATELLITE}/${ENV.API_KEY}/${ENV.PASSPHRASE} env vars`);
+    return uplink.requestAccessWithPassphrase(env.satellite, env.apiKey, env.passphrase);
   }
 
   // Priority 3: config file
@@ -57,7 +55,7 @@ async function resolveAccess(): Promise<AccessResultStruct> {
   throw new Error(
     'No Storj credentials found.\n' +
       'Run the setup wizard:  npx storj-uplink-mcp-setup\n' +
-      'Or set env vars:       STORJ_ACCESS_GRANT=<grant>',
+      `Or set env vars:       ${ENV.ACCESS_GRANT}=<grant>`,
   );
 }
 

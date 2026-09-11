@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { ENV } from '../src/env.js';
 
 const m = vi.hoisted(() => ({
   parseAccess: vi.fn(),
@@ -16,7 +17,7 @@ const makeAccess = (project = makeProject()) => ({ project, openProject: vi.fn(a
 const load = async () => { vi.resetModules(); return import('../src/auth.js'); };
 
 beforeEach(() => {
-  for (const k of ['STORJ_ACCESS_GRANT', 'STORJ_SATELLITE', 'STORJ_API_KEY', 'STORJ_PASSPHRASE']) vi.stubEnv(k, '');
+  for (const k of Object.values(ENV)) vi.stubEnv(k, '');
   m.parseAccess.mockReset(); m.requestAccessWithPassphrase.mockReset(); m.loadConfig.mockReset().mockReturnValue(null);
   vi.spyOn(console, 'error').mockImplementation(() => {});
 });
@@ -24,7 +25,7 @@ afterEach(() => { vi.unstubAllEnvs(); vi.restoreAllMocks(); });
 
 describe('credential resolution priority', () => {
   it('1. STORJ_ACCESS_GRANT env var', async () => {
-    vi.stubEnv('STORJ_ACCESS_GRANT', 'env-grant');
+    vi.stubEnv(ENV.ACCESS_GRANT, 'env-grant');
     const access = makeAccess(); m.parseAccess.mockResolvedValue(access);
     const auth = await load();
     expect(await auth.getProject()).toBe(access.project);
@@ -33,7 +34,7 @@ describe('credential resolution priority', () => {
   });
 
   it('2. satellite + api key + passphrase env vars', async () => {
-    vi.stubEnv('STORJ_SATELLITE', 'sat'); vi.stubEnv('STORJ_API_KEY', 'k'); vi.stubEnv('STORJ_PASSPHRASE', 'p');
+    vi.stubEnv(ENV.SATELLITE, 'sat'); vi.stubEnv(ENV.API_KEY, 'k'); vi.stubEnv(ENV.PASSPHRASE, 'p');
     const access = makeAccess(); m.requestAccessWithPassphrase.mockResolvedValue(access);
     const auth = await load();
     expect(await auth.getProject()).toBe(access.project);
@@ -66,7 +67,7 @@ describe('credential resolution priority', () => {
 
 describe('connection lifecycle', () => {
   it('caches the open project and re-resolves once it is closed', async () => {
-    vi.stubEnv('STORJ_ACCESS_GRANT', 'g');
+    vi.stubEnv(ENV.ACCESS_GRANT, 'g');
     const access = makeAccess(); m.parseAccess.mockResolvedValue(access);
     const auth = await load();
     await auth.getProject(); await auth.getProject();
@@ -77,7 +78,7 @@ describe('connection lifecycle', () => {
   });
 
   it('requireAccess exposes the resolved access grant', async () => {
-    vi.stubEnv('STORJ_ACCESS_GRANT', 'g');
+    vi.stubEnv(ENV.ACCESS_GRANT, 'g');
     const access = makeAccess(); m.parseAccess.mockResolvedValue(access);
     expect(await (await load()).requireAccess()).toBe(access);
   });
@@ -86,7 +87,7 @@ describe('connection lifecycle', () => {
     const auth1 = await load();
     await expect(auth1.shutdown()).resolves.toBeUndefined();
 
-    vi.stubEnv('STORJ_ACCESS_GRANT', 'g');
+    vi.stubEnv(ENV.ACCESS_GRANT, 'g');
     const access = makeAccess(); m.parseAccess.mockResolvedValue(access);
     const auth2 = await load();
     await auth2.getProject();
