@@ -11,7 +11,7 @@ import type { ListObjectsResult } from '../../src/features/objects/output.js';
 type Entry = ListObjectsResult['objects'][number];
 type SortKey = 'key' | 'size_bytes' | 'created';
 
-const app = new App({ name: 'Storj object browser', version: '1.0.0' });
+const app = new App({ name: 'Storj object browser', version: '1.0.1' });
 
 const el = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
 const rows = el<HTMLTableSectionElement>('rows');

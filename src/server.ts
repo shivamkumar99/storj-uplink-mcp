@@ -32,7 +32,7 @@ const TOOLS: readonly Tool[] = [
 export function createServer(): McpServer {
   const server = new McpServer({
     name: 'storj-uplink-mcp',
-    version: '1.0.0',
+    version: '1.0.1',
   });
 
   registerTools(server, TOOLS);
