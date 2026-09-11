@@ -4,7 +4,7 @@ import path from 'node:path';
 import { StorjError } from 'storj-uplink-nodejs';
 import {
   ok, errorResponse, safeCall, sanitizeOutput, withTimeout, validateFilePath, resolveWithinDir,
-  expiryDate, formatBytes, formatTimestamp, alphabetical, optionalPrefix, toError,
+  expiryDate, formatBytes, formatTimestamp, optionalPrefix, toError,
   TIMEOUT_METADATA_MS, TIMEOUT_TRANSFER_MS,
 } from '../src/utils.js';
 import { textOf } from './helpers/tmp.js';
@@ -103,8 +103,7 @@ describe('small formatters', () => {
     expect(formatTimestamp(0)).toBe('none');
     expect(formatTimestamp(1_700_000_000)).toBe('2023-11-14T22:13:20.000Z');
   });
-  it('alphabetical / optionalPrefix', () => {
-    expect(['b', 'B', 'a', 'A'].sort(alphabetical)).toEqual(['a', 'A', 'b', 'B']);
+  it('optionalPrefix', () => {
     expect(optionalPrefix(undefined)).toBe('');
     expect(optionalPrefix('')).toBe('');
     expect(optionalPrefix('p/')).toBe('/p/');

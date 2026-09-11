@@ -27,6 +27,13 @@ export interface UploadRecord {
 }
 
 const objKey = (bucket: string, key: string) => `${bucket}/${key}`;
+
+/** Storj lists buckets/objects in byte order (listing is cursor-paginated by name/key). */
+function byteOrder(a: string, b: string): number {
+  if (a < b) return -1;
+  if (a > b) return 1;
+  return 0;
+}
 const CREATED = 1_700_000_000;
 
 export function fakeProject(initial: { buckets?: string[]; objects?: Record<string, FakeObject> } = {}) {
@@ -55,7 +62,7 @@ export function fakeProject(initial: { buckets?: string[]; objects?: Record<stri
     async close() { calls.push('close'); },
 
     // ---- buckets
-    async listBuckets() { return [...buckets].map((name) => ({ name, created: CREATED })); },
+    async listBuckets() { return [...buckets].sort(byteOrder).map((name) => ({ name, created: CREATED })); },
     async createBucket(name: string) { buckets.add(name); return { name, created: CREATED }; },
     async ensureBucket(name: string) { buckets.add(name); return { name, created: CREATED }; },
     async statBucket(name: string) {
@@ -83,6 +90,7 @@ export function fakeProject(initial: { buckets?: string[]; objects?: Record<stri
         .filter(([k]) => k.startsWith(`${bucket}/`))
         .map(([k, o]) => ({ k: k.slice(bucket.length + 1), o }))
         .filter(({ k }) => k.startsWith(prefix))
+        .sort((x, y) => byteOrder(x.k, y.k))
         .map(({ k, o }) => info(k, o));
     },
     async deleteObject(bucket: string, key: string) {

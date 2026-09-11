@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { defineTool } from '../registry.js';
 import { getProject } from '../auth.js';
-import { ok, safeCall, formatBytes, formatTimestamp, alphabetical, optionalPrefix, type McpTextResponse } from '../utils.js';
+import { ok, safeCall, formatBytes, formatTimestamp, optionalPrefix, type McpTextResponse } from '../utils.js';
 import { createProgress } from '../progress.js';
 import {
   bucketField,
@@ -17,7 +17,7 @@ import type { ProjectResultStruct } from 'storj-uplink-nodejs';
 
 /**
  * Resolve which object keys to delete.
- * Returns the matched keys sorted alphabetically.
+ * Keys come back in the order Storj lists them (lexicographic by key).
  */
 async function resolveObjectKeys(
   project: ProjectResultStruct,
@@ -41,7 +41,7 @@ async function resolveObjectKeys(
   if (pattern) {
     names = names.filter((k) => matchGlob(k, pattern));
   }
-  return names.sort(alphabetical);
+  return names;
 }
 
 // ---------------------------------------------------------------------------

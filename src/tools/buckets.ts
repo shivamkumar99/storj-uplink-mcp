@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { defineTool } from '../registry.js';
 import { getProject } from '../auth.js';
-import { ok, safeCall, formatBytes, formatTimestamp, alphabetical, type McpTextResponse } from '../utils.js';
+import { ok, safeCall, formatBytes, formatTimestamp, type McpTextResponse } from '../utils.js';
 import { createProgress } from '../progress.js';
 import { bucketField } from './schemas.js';
 import { matchGlob } from './glob.js';
@@ -10,7 +10,7 @@ import type { ProjectResultStruct } from 'storj-uplink-nodejs';
 
 /**
  * Resolve which bucket names to target from the user-supplied filters.
- * Returns the matched names sorted alphabetically.
+ * Names come back in the order Storj lists them (lexicographic by name).
  */
 async function resolveBucketNames(
   project: ProjectResultStruct,
@@ -23,12 +23,12 @@ async function resolveBucketNames(
   // Pattern — list all buckets and filter
   if (pattern) {
     const all = await project.listBuckets();
-    return all.map((b) => b.name).filter((n) => matchGlob(n, pattern)).sort(alphabetical);
+    return all.map((b) => b.name).filter((n) => matchGlob(n, pattern));
   }
 
   // Neither — delete ALL buckets
   const all = await project.listBuckets();
-  return all.map((b) => b.name).sort(alphabetical);
+  return all.map((b) => b.name);
 }
 
 // ---------------------------------------------------------------------------
