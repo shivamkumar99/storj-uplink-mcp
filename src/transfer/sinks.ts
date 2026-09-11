@@ -35,7 +35,9 @@ export function fileSink(filePath: string): ChunkSink {
   return {
     label: filePath,
     open() {
+// eslint-disable-next-line security/detect-non-literal-fs-filename -- path validated by validateFilePath / resolveWithinDir at the tool boundary
       fs.mkdirSync(path.dirname(filePath), { recursive: true });
+// eslint-disable-next-line security/detect-non-literal-fs-filename -- same validated path
       fd = fs.openSync(filePath, 'w');
     },
     write(buf, n) { fs.writeSync(fd, buf, 0, n); },

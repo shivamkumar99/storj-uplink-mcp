@@ -76,19 +76,24 @@ export interface BatchReportOptions {
   notes?: string[];
 }
 
+/** "✅ Deleted:" block — only when a label was requested and something succeeded. */
+function successLines(result: BatchResult, label?: string): string[] {
+  if (!label || result.succeeded.length === 0) return [];
+  return ['', label, ...result.succeeded.map((name) => `  - ${sanitizeOutput(name)}`)];
+}
+
+/** "❌ Failed:" block — only when something failed. */
+function failureLines(result: BatchResult): string[] {
+  if (result.failed.length === 0) return [];
+  return ['', '❌ Failed:', ...result.failed.map((f) => `  - ${sanitizeOutput(f.name)}: ${sanitizeOutput(f.error)}`)];
+}
+
 /** Render a BatchResult as the standard multi-line ✅/❌ report. */
 export function formatBatchReport(result: BatchResult, opts: BatchReportOptions): string {
-  const lines: string[] = [opts.header];
-  for (const note of opts.notes ?? []) {
-    lines.push('', note);
-  }
-  if (opts.successLabel && result.succeeded.length > 0) {
-    lines.push('', opts.successLabel);
-    for (const name of result.succeeded) lines.push(`  - ${sanitizeOutput(name)}`);
-  }
-  if (result.failed.length > 0) {
-    lines.push('', '❌ Failed:');
-    for (const f of result.failed) lines.push(`  - ${sanitizeOutput(f.name)}: ${sanitizeOutput(f.error)}`);
-  }
-  return lines.join('\n');
+  return [
+    opts.header,
+    ...(opts.notes ?? []).flatMap((note) => ['', note]),
+    ...successLines(result, opts.successLabel),
+    ...failureLines(result),
+  ].join('\n');
 }

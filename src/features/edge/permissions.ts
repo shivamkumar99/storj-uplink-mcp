@@ -23,13 +23,25 @@ export interface PermissionArgs {
   allow_delete?: boolean;
 }
 
-/** Build a Permission from the tool's allow_* flags (download/list default on, upload/delete off). */
+const PERMISSION_FLAGS = ['allow_download', 'allow_upload', 'allow_list', 'allow_delete'] as const;
+
+/** Least privilege by default: read and list on, write and delete off. */
+const PERMISSION_DEFAULTS: Required<PermissionArgs> = {
+  allow_download: true, allow_upload: false, allow_list: true, allow_delete: false,
+};
+
+/** Build a Permission from the tool's allow_* flags, filling unset ones from the defaults. */
 export function permissionFromArgs(args: PermissionArgs, notAfter?: Date): Permission {
+  const flags = { ...PERMISSION_DEFAULTS };
+  for (const flag of PERMISSION_FLAGS) {
+    const value = args[flag];
+    if (value !== undefined) flags[flag] = value;
+  }
   return {
-    allowDownload: args.allow_download ?? true,
-    allowUpload: args.allow_upload ?? false,
-    allowList: args.allow_list ?? true,
-    allowDelete: args.allow_delete ?? false,
+    allowDownload: flags.allow_download,
+    allowUpload: flags.allow_upload,
+    allowList: flags.allow_list,
+    allowDelete: flags.allow_delete,
     notAfter,
   };
 }

@@ -25,6 +25,7 @@ import type { uploadDirectorySchema } from './schema.js';
 
 /** Recursively collect regular files under `dir`, skipping symlinks. */
 function collectFiles(dir: string, out: string[]): void {
+// eslint-disable-next-line security/detect-non-literal-fs-filename -- root validated by validateFilePath; symlinks are never followed
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     if (out.length > MAX_DIR_FILES) return; // bounded; caller reports the cap
     const full = path.join(dir, entry.name);
@@ -40,6 +41,7 @@ export function uploadDirectory(
   return safeCall(async () => {
     validateFilePath(args.dir_path);
     const root = path.resolve(args.dir_path);
+// eslint-disable-next-line security/detect-non-literal-fs-filename -- validated on the line above
     if (!fs.existsSync(root) || !fs.statSync(root).isDirectory()) {
       return ok(`"${args.dir_path}" is not an existing directory.`);
     }

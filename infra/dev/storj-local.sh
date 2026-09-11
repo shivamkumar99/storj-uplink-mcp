@@ -20,7 +20,6 @@
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT="$(cd "$HERE/../.." && pwd)"
 # Everything is scoped to ONE compose project.  `down -v` therefore only ever
 # removes containers/volumes labelled com.docker.compose.project=storj-up —
 # never anything from other projects on this machine (self-hosted databases,

@@ -38,6 +38,7 @@ export function configPath(): string {
 }
 
 export function configExists(): boolean {
+// eslint-disable-next-line security/detect-non-literal-fs-filename -- CONFIG_PATH is a constant under the home directory, not input
   return fs.existsSync(CONFIG_PATH);
 }
 
@@ -102,8 +103,11 @@ export function saveConfig(config: StorjMcpConfig): void {
     ciphertext,
   };
 
+// eslint-disable-next-line security/detect-non-literal-fs-filename -- CONFIG_PATH is a constant under the home directory, not input
   fs.mkdirSync(CONFIG_DIR, { recursive: true });
+// eslint-disable-next-line security/detect-non-literal-fs-filename -- CONFIG_PATH is a constant under the home directory, not input
   fs.writeFileSync(CONFIG_PATH, JSON.stringify(file, null, 2), { encoding: 'utf8' });
+// eslint-disable-next-line security/detect-non-literal-fs-filename -- CONFIG_PATH is a constant under the home directory, not input
   fs.chmodSync(CONFIG_PATH, 0o600);
 }
 
@@ -112,6 +116,7 @@ export function loadConfig(): StorjMcpConfig | null {
 
   let file: EncryptedFile;
   try {
+// eslint-disable-next-line security/detect-non-literal-fs-filename -- CONFIG_PATH is a constant under the home directory, not input
     const raw = fs.readFileSync(CONFIG_PATH, 'utf8');
     file = JSON.parse(raw) as EncryptedFile;
   } catch {

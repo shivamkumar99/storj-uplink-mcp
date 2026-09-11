@@ -28,26 +28,29 @@ export function validateFilePath(filePath: string): void {
   if (filePath.includes('..')) {
     throw new Error(`Path rejected: contains ".." traversal — "${filePath}"`);
   }
+  rejectSensitiveLocation(resolved, filePath);
+  rejectSystemDirectory(resolved, filePath);
+}
 
-  // Reject sensitive directories
+/** Sensitive directories anywhere in the path, and sensitive file names. */
+function rejectSensitiveLocation(resolved: string, filePath: string): void {
   const parts = new Set(resolved.split(path.sep));
   for (const dir of SENSITIVE_DIRS) {
     if (parts.has(dir)) {
       throw new Error(`Path rejected: accesses sensitive directory "${dir}" — "${filePath}"`);
     }
   }
-
-  // Reject sensitive filenames
   const basename = path.basename(resolved);
   if (SENSITIVE_FILES.has(basename)) {
     throw new Error(`Path rejected: sensitive file "${basename}" — "${filePath}"`);
   }
+}
 
-  // Reject system directories
+/** Operating-system directories that a storage tool has no business touching. */
+function rejectSystemDirectory(resolved: string, filePath: string): void {
   const systemDirs = process.platform === 'win32'
     ? [String.raw`C:\Windows`, String.raw`C:\Program Files`]
     : ['/etc', '/var', '/usr', '/sys', '/proc', '/boot', '/dev'];
-
   for (const sysDir of systemDirs) {
     if (resolved.startsWith(sysDir + path.sep) || resolved === sysDir) {
       throw new Error(`Path rejected: system directory "${sysDir}" — "${filePath}"`);

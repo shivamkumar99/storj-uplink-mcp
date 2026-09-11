@@ -52,6 +52,7 @@ export function registerUiResources(server: McpServer): void {
       view.uri,
       { description: view.description, mimeType: RESOURCE_MIME_TYPE },
       () => Promise.resolve({
+// eslint-disable-next-line security/detect-non-literal-fs-filename -- file names come from the VIEWS table above, not from input
         contents: [{ uri: view.uri, mimeType: RESOURCE_MIME_TYPE, text: readFileSync(path.join(VIEW_DIR, view.file), 'utf8') }],
       }),
     );

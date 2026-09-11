@@ -105,10 +105,21 @@ export async function scanForMatches(
  * and the search term is wrapped in «...» (pure text, works in any MCP client);
  * a separator is inserted between non-consecutive blocks.
  */
+/** Wrap every case-insensitive occurrence of `needle` in «…», keeping the original casing. */
+function highlight(text: string, needle: string): string {
+  const haystack = text.toLowerCase();
+  const target = needle.toLowerCase();
+  if (target.length === 0) return text;
+  let out = '';
+  let from = 0;
+  for (let at = haystack.indexOf(target, from); at !== -1; at = haystack.indexOf(target, from)) {
+    out += `${text.slice(from, at)}«${text.slice(at, at + target.length)}»`;
+    from = at + target.length;
+  }
+  return out + text.slice(from);
+}
+
 export function formatGrepLines(results: ResultLine[], query: string): string[] {
-  // Case-insensitive replace that preserves original casing
-  const re = new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`), 'gi');
-  const highlight = (text: string): string => text.replace(re, (m) => `«${m}»`);
 
   const lines: string[] = [];
   let prevLineNo = -2;
@@ -117,7 +128,7 @@ export function formatGrepLines(results: ResultLine[], query: string): string[] 
       lines.push(`${'─'.repeat(8)} ┼ ${'─'.repeat(52)}`);
     }
     const marker = r.isMatch ? '►' : ' ';
-    const text   = r.isMatch ? highlight(sanitizeOutput(r.text)) : sanitizeOutput(r.text);
+    const text   = r.isMatch ? highlight(sanitizeOutput(r.text), query) : sanitizeOutput(r.text);
     lines.push(`${marker}${fmtLineNo(r.lineNo)} │ ${text}`);
     prevLineNo = r.lineNo;
   }

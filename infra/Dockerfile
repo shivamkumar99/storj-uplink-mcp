@@ -34,6 +34,10 @@ ENV UPLINK_INSTALL=prebuilt \
     NPM_CONFIG_FUND=false \
     NPM_CONFIG_AUDIT=false
 
+# hadolint ignore=DL3008
+# (apt versions are not pinned: Debian point releases drop superseded package
+#  versions from the archive, which would break the build; the base image is
+#  pinned by digest instead, which fixes the package index it starts from.)
 RUN apt-get update \
  && apt-get install -y --no-install-recommends make curl ca-certificates \
  && rm -rf /var/lib/apt/lists/*

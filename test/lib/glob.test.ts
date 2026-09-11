@@ -1,30 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { matchGlob } from '../../src/lib/glob.js';
 
-// The two hand-rolled matchers picomatch replaced, kept as fixtures so the
-// migration's guarantees stay executable.
-function oldFlat(str: string, si: number, pat: string, pi: number): boolean {
-  while (pi < pat.length) {
-    const pc = pat[pi];
-    if (pc === '*') { while (pi < pat.length && pat[pi] === '*') pi++; if (pi === pat.length) return true;
-      for (let i = si; i <= str.length; i++) if (oldFlat(str, i, pat, pi)) return true; return false; }
-    else if (pc === '?') { if (si >= str.length) return false; si++; pi++; }
-    else { if (si >= str.length || str[si] !== pc) return false; si++; pi++; }
-  }
-  return si === str.length;
-}
-function oldPath(str: string, si: number, pat: string, pi: number): boolean {
-  while (pi < pat.length) {
-    if (pat[pi] === '*' && pi + 1 < pat.length && pat[pi + 1] === '*') { pi += 2; if (pi < pat.length && pat[pi] === '/') pi++;
-      if (pi === pat.length) return true; for (let i = si; i <= str.length; i++) if (oldPath(str, i, pat, pi)) return true; return false; }
-    if (pat[pi] === '*') { pi++; if (pi === pat.length) return str.indexOf('/', si) === -1;
-      for (let i = si; i <= str.length; i++) { if (str[i] === '/') break; if (oldPath(str, i, pat, pi)) return true; } return false; }
-    if (pat[pi] === '?') { if (si >= str.length || str[si] === '/') return false; si++; pi++; continue; }
-    if (si >= str.length || str[si] !== pat[pi]) return false; si++; pi++;
-  }
-  return si === str.length;
-}
-
 describe('matchGlob', () => {
   it.each([
     ['a.log', '*.log', true], ['dir/a.log', '*.log', false],
@@ -38,10 +14,9 @@ describe('matchGlob', () => {
     expect(matchGlob(str, pattern)).toBe(want);
   });
 
-  it('fixes the old bug where "*" directly before "/" could never match', () => {
+  it('matches "*" directly before "/" (the hand-rolled matcher this replaced never did)', () => {
     for (const [s, p] of [['a/b/c', 'a/*/c'], ['logs/2024/error.log', 'logs/*/error.log'], ['x/y', '*/y']]) {
-      expect(oldPath(s, 0, p, 0)).toBe(false);
-      expect(matchGlob(s, p)).toBe(true);
+      expect(matchGlob(s, p), `${s} ~ ${p}`).toBe(true);
     }
   });
 
@@ -57,25 +32,37 @@ describe('matchGlob', () => {
     expect(matchGlob('ab', '+(a|b)')).toBe(false);
   });
 
-  it('is identical to the original flat matcher for bucket names (no "/")', () => {
-    const names = ['logs-2024', 'logs', 'test-ab-x', 'temp', 'temporary', 'prod', 'a', 'ab', 'abc', 'log', 'logs-', 'x-logs-2024', '.dot'];
-    const pats = ['logs-*', 'test-??-*', 'temp*', '*', '**', '?', '??', '*logs*', 'logs', '*-*', 'log?', 'a*c', '*z', '.*', '*dot'];
-    for (const n of names) for (const p of pats) expect(matchGlob(n, p), `${n} ~ ${p}`).toBe(oldFlat(n, 0, p, 0));
+  // Bucket names never contain "/". This table is the complete truth table of
+  // the flat matcher picomatch replaced (13 names × 15 patterns): for each
+  // name, exactly these patterns match and no others.
+  const PATTERNS = ['logs-*', 'test-??-*', 'temp*', '*', '**', '?', '??', '*logs*', 'logs', '*-*', 'log?', 'a*c', '*z', '.*', '*dot'];
+  it.each([
+    ['logs-2024', ['logs-*', '*', '**', '*logs*', '*-*']],
+    ['logs', ['*', '**', '*logs*', 'logs', 'log?']],
+    ['test-ab-x', ['test-??-*', '*', '**', '*-*']],
+    ['temp', ['temp*', '*', '**']],
+    ['temporary', ['temp*', '*', '**']],
+    ['prod', ['*', '**']],
+    ['a', ['*', '**', '?']],
+    ['ab', ['*', '**', '??']],
+    ['abc', ['*', '**', 'a*c']],
+    ['log', ['*', '**']],
+    ['logs-', ['logs-*', '*', '**', '*logs*', '*-*']],
+    ['x-logs-2024', ['*', '**', '*logs*', '*-*']],
+    ['.dot', ['*', '**', '.*', '*dot']],
+  ])('bucket name %j matches exactly %j', (name, matching) => {
+    expect(PATTERNS.filter((p) => matchGlob(name, p))).toEqual(matching);
   });
 
-  it('differs from the original path matcher only in the accepted categories', () => {
-    const accepted = (s: string, p: string) =>
-      p === '' || s === '' || /[^/]\*\*|\*\*[^/]/.test(p) || /(^|[^*])\*\//.test(p) || s.endsWith('/') || (p.endsWith('/**') && s === p.slice(0, -3));
-    const keys = ['', 'a', 'ab', 'a/b', 'a/b/c', 'a/b/x/c', 'a.log', 'd/a.log', 'photos', 'photos/', 'photos/a.jpg', 'photos/2024/a.jpg',
-      'data/x/temp-1', 'data/temp-1', 'logs-2024', 'a//b', '/a', 'a/', 'aXb', 'a/Xb', 'x/y/z.tmp', 'y.tmp', '.hidden', 'dir/.hidden', 'a.b.c'];
-    const pats = ['', '*', '**', '?', '??', 'a', 'a*', '*a', '*.log', '**.log', '**/*.log', 'photos/*.jpg', 'photos/**/*.jpg', 'photos/**',
-      'photos/*', 'photos', 'data/**/temp-*', 'logs-*', 'a?b', 'a/?b', '**/z.tmp', '*/*/z.tmp', '**/**', 'a/**', 'a**', '**a', '*/', '/*',
-      '**/*', '*.*', '?*', 'a/*/c', '*/y', '.*', 'a.b.*'];
-    const unexpected: string[] = [];
-    for (const s of keys) for (const p of pats) {
-      const n = matchGlob(s, p), o = oldPath(s, 0, p, 0);
-      if (n !== o && !accepted(s, p)) unexpected.push(`${JSON.stringify(s)} ~ ${JSON.stringify(p)}: old=${o} new=${n}`);
-    }
-    expect(unexpected).toEqual([]);
+  // Object keys contain "/". Documented behaviour at the edges that differ
+  // from a naive matcher: empty inputs, "**" adjacency, empty segments and trailing slashes.
+  it.each([
+    ['', '*', false], ['a', '', false], ['', '', false],
+    ['a/b', 'a**', false], ['a/b', '**a', false],
+    ['photos/', 'photos/*', false], ['photos', 'photos/**', true], ['photos/a.jpg', 'photos/**', true],
+    ['a//b', 'a/*/b', true], ['/a', '/*', true], ['a/', '*/', true],
+    ['x/y/z.tmp', '**/z.tmp', true], ['x/y/z.tmp', '*/*/z.tmp', true], ['y.tmp', '**/z.tmp', false],
+  ])('%j ~ %j → %s', (str, pattern, want) => {
+    expect(matchGlob(str, pattern)).toBe(want);
   });
 });

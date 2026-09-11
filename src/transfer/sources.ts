@@ -29,8 +29,10 @@ export function bufferSource(data: Buffer): ChunkSource {
  */
 export function fileSource(filePath: string): ChunkSource {
   return {
+// eslint-disable-next-line security/detect-non-literal-fs-filename -- path validated by validateFilePath at the tool boundary
     size: fs.statSync(filePath).size,
     async *chunks(chunkSize) {
+// eslint-disable-next-line security/detect-non-literal-fs-filename -- same validated path
       for await (const chunk of fs.createReadStream(filePath, { highWaterMark: chunkSize })) {
         yield chunk as Buffer;
       }

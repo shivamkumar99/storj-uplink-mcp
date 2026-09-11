@@ -1,5 +1,5 @@
 import { Uplink, type AccessResultStruct, type ProjectResultStruct } from 'storj-uplink-nodejs';
-import { loadConfig, configPath } from './config.js';
+import { loadConfig, configPath, type StorjMcpConfig } from './config.js';
 import { ENV, readStorjEnv, hasPassphraseCredentials } from './env.js';
 
 // ---------------------------------------------------------------------------
@@ -17,6 +17,17 @@ let _access: AccessResultStruct | null = null;
 //   2. ENV.SATELLITE + ENV.API_KEY + ENV.PASSPHRASE
 //   3. ~/.storj-mcp/config.json (written by setup wizard)
 // ---------------------------------------------------------------------------
+
+/** Turn a decrypted config file into an access, whichever auth type it holds. */
+function accessFromConfig(uplink: Uplink, config: StorjMcpConfig): Promise<AccessResultStruct> {
+  if (config.authType === 'access_grant' && config.accessGrant) {
+    return uplink.parseAccess(config.accessGrant);
+  }
+  if (config.authType === 'passphrase' && config.satellite && config.apiKey && config.passphrase) {
+    return uplink.requestAccessWithPassphrase(config.satellite, config.apiKey, config.passphrase);
+  }
+  throw new Error('Config file exists but is missing required fields. Run: npx storj-uplink-mcp-setup');
+}
 
 async function resolveAccess(): Promise<AccessResultStruct> {
   const uplink = new Uplink();
@@ -38,18 +49,7 @@ async function resolveAccess(): Promise<AccessResultStruct> {
   const config = loadConfig();
   if (config) {
     console.error(`[storj-mcp] Auth: using config file (${configPath()})`);
-    if (config.authType === 'access_grant' && config.accessGrant) {
-      return uplink.parseAccess(config.accessGrant);
-    }
-    if (
-      config.authType === 'passphrase' &&
-      config.satellite &&
-      config.apiKey &&
-      config.passphrase
-    ) {
-      return uplink.requestAccessWithPassphrase(config.satellite, config.apiKey, config.passphrase);
-    }
-    throw new Error('Config file exists but is missing required fields. Run: npx storj-uplink-mcp-setup');
+    return accessFromConfig(uplink, config);
   }
 
   throw new Error(

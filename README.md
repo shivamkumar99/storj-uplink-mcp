@@ -35,13 +35,13 @@
 
 ### Step 1 — Install and run the setup wizard
 
-#### Global install:
+#### Global install
 ```bash
 npm install -g storj-uplink-mcp   # Install globally
 storj-uplink-mcp-setup            # Run setup wizard
 ```
 
-#### Local install:
+#### Local install
 ```bash
 npm install storj-uplink-mcp      # Install locally
 npx storj-uplink-mcp-setup        # Run setup wizard (recommended)
@@ -201,14 +201,14 @@ Optional display setting, independent of credentials:
 
 ## Managing Credentials
 
-#### Global install:
+#### Credential commands (global install)
 ```bash
 storj-uplink-mcp-setup            # Setup/reconfigure
 storj-uplink-mcp-setup --status   # Check credential source
 storj-uplink-mcp-setup --reset    # Delete saved config
 ```
 
-#### Local install:
+#### Credential commands (local install)
 ```bash
 npx storj-uplink-mcp-setup            # Setup/reconfigure
 npx storj-uplink-mcp-setup --status   # Check credential source

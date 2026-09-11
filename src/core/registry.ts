@@ -94,20 +94,33 @@ type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string
 
 /** Return a copy of a JSON Schema relabelled as 2020-12. */
 export function toJsonSchema2020(schema: Record<string, unknown>): Record<string, unknown> {
-  const walk = (node: JsonValue, path: string): JsonValue => {
-    if (Array.isArray(node)) return node.map((n, i) => walk(n, `${path}[${i}]`));
-    if (node === null || typeof node !== 'object') {
-      return typeof node === 'string' && path.endsWith('.$ref') ? node.replace('#/definitions/', '#/$defs/') : node;
-    }
-    const out: { [key: string]: JsonValue } = {};
-    for (const [key, value] of Object.entries(node)) {
-      if (path === '' && key === '$schema') continue;
-      const outKey = path === '' && key === 'definitions' ? '$defs' : key;
-      out[outKey] = walk(value, `${path}.${key}`);
-    }
-    return out;
-  };
   return { $schema: JSON_SCHEMA_2020_12, ...(walk(schema as JsonValue, '') as { [key: string]: JsonValue }) };
+}
+
+/** A `$ref` string gets the 2020-12 definitions container name; everything else passes through. */
+function rewriteLeaf(node: JsonValue, path: string): JsonValue {
+  return typeof node === 'string' && path.endsWith('.$ref') ? node.replace('#/definitions/', '#/$defs/') : node;
+}
+
+/** Top level only: drop the old `$schema`, rename `definitions`. */
+function rewriteTopLevelKey(key: string): string | undefined {
+  if (key === '$schema') return undefined;
+  return key === 'definitions' ? '$defs' : key;
+}
+
+function walk(node: JsonValue, path: string): JsonValue {
+  if (Array.isArray(node)) return node.map((n, i) => walk(n, `${path}[${i}]`));
+  if (node === null || typeof node !== 'object') return rewriteLeaf(node, path);
+  return walkObject(node, path);
+}
+
+function walkObject(node: { [key: string]: JsonValue }, path: string): JsonValue {
+  const out: { [key: string]: JsonValue } = {};
+  for (const [key, value] of Object.entries(node)) {
+    const outKey = path === '' ? rewriteTopLevelKey(key) : key;
+    if (outKey !== undefined) out[outKey] = walk(value, `${path}.${key}`);
+  }
+  return out;
 }
 
 /**

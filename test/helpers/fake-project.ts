@@ -45,12 +45,10 @@ export function fakeProject(initial: { buckets?: string[]; bucketCreated?: Recor
   const downloads: Array<{ closed: boolean }> = [];
   const calls: string[] = [];
 
-  const info = (key: string, o: FakeObject) => ({
-    key,
-    isPrefix: false,
-    system: { created: o.created ?? CREATED, expires: o.expires ?? null, contentLength: o.size ?? o.data.length },
-    custom: o.custom ?? {},
-  });
+  const info = (key: string, o: FakeObject) => {
+    const { created = CREATED, expires = null, size = o.data.length, custom = {} } = o;
+    return { key, isPrefix: false, system: { created, expires, contentLength: size }, custom };
+  };
   const requireObject = (bucket: string, key: string): FakeObject => {
     const o = store.get(objKey(bucket, key));
     if (!o) throw new Error(`object not found: ${bucket}/${key}`);
