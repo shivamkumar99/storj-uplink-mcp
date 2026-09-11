@@ -1,6 +1,6 @@
 import type { z, ZodRawShape } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import type { ToolAnnotations } from '@modelcontextprotocol/sdk/types.js';
+import type { ListToolsResult, ToolAnnotations } from '@modelcontextprotocol/sdk/types.js';
 import { auditLog } from './audit.js';
 import { guard } from './guard.js';
 import { runWithRequestContext } from './context.js';
@@ -74,6 +74,65 @@ export function defineTool<S extends ZodRawShape>(def: ToolDefinition<S>): Tool 
   return def;
 }
 
+// ---------------------------------------------------------------------------
+// JSON Schema dialect.
+//
+// MCP specifies JSON Schema 2020-12 for tool schemas, and current hosts
+// validate a tool's outputSchema with a 2020-12-only validator before the
+// call is even made.  The SDK (1.30) converts Zod schemas at tools/list time
+// and stamps them "draft-07", which such hosts reject with
+// "unsupported dialect" — the tool then never runs.  The generated schemas
+// use only keywords that mean the same in both dialects, so relabelling the
+// listing is a faithful fix.  (`definitions`/`#/definitions/` are mapped to
+// their 2020-12 spellings for completeness; the SDK emits them only when a
+// Zod schema object is reused inside one tool schema.)
+// ---------------------------------------------------------------------------
+
+export const JSON_SCHEMA_2020_12 = 'https://json-schema.org/draft/2020-12/schema';
+
+type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
+
+/** Return a copy of a JSON Schema relabelled as 2020-12. */
+export function toJsonSchema2020(schema: Record<string, unknown>): Record<string, unknown> {
+  const walk = (node: JsonValue, path: string): JsonValue => {
+    if (Array.isArray(node)) return node.map((n, i) => walk(n, `${path}[${i}]`));
+    if (node === null || typeof node !== 'object') {
+      return typeof node === 'string' && path.endsWith('.$ref') ? node.replace('#/definitions/', '#/$defs/') : node;
+    }
+    const out: { [key: string]: JsonValue } = {};
+    for (const [key, value] of Object.entries(node)) {
+      if (path === '' && key === '$schema') continue;
+      const outKey = path === '' && key === 'definitions' ? '$defs' : key;
+      out[outKey] = walk(value, `${path}.${key}`);
+    }
+    return out;
+  };
+  return { $schema: JSON_SCHEMA_2020_12, ...(walk(schema as JsonValue, '') as { [key: string]: JsonValue }) };
+}
+
+/**
+ * Wrap the SDK's tools/list handler so every emitted inputSchema/outputSchema
+ * is labelled 2020-12.  The SDK keeps handlers in a private map; if that ever
+ * changes we fail loudly at startup rather than ship draft-07 again.
+ */
+function useJsonSchema2020(server: McpServer): void {
+  type Handler = (request: unknown, extra: unknown) => Promise<ListToolsResult>;
+  const handlers = (server.server as unknown as { _requestHandlers?: Map<string, Handler> })._requestHandlers;
+  const original = handlers?.get('tools/list');
+  if (!handlers || !original) throw new Error('MCP SDK layout changed: cannot find the tools/list handler to relabel schemas');
+  handlers.set('tools/list', async (request, extra) => {
+    const result = await original(request, extra);
+    return {
+      ...result,
+      tools: result.tools.map((tool) => ({
+        ...tool,
+        inputSchema: toJsonSchema2020(tool.inputSchema) as typeof tool.inputSchema,
+        ...(tool.outputSchema ? { outputSchema: toJsonSchema2020(tool.outputSchema) as typeof tool.outputSchema } : {}),
+      })),
+    };
+  });
+}
+
 /**
  * Register every tool on the server.  Each call runs inside its request
  * context, under the concurrency guard, and is audit-logged.  Registration
@@ -113,4 +172,7 @@ export function registerTools(server: McpServer, tools: readonly Tool[]): void {
         ),
     );
   }
+
+  // The SDK installs its tools/list handler on the first registerTool call.
+  if (tools.length > 0) useJsonSchema2020(server);
 }

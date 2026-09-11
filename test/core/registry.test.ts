@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { z } from 'zod';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { defineTool, registerTools, annotations } from '../../src/core/registry.js';
+import { defineTool, registerTools, annotations, toJsonSchema2020, JSON_SCHEMA_2020_12 } from '../../src/core/registry.js';
 import { currentRequest } from '../../src/core/context.js';
 import { ok } from '../../src/lib/response.js';
 
@@ -45,5 +45,28 @@ describe('defineTool / registerTools', () => {
     }
     expect(annotations.deletes.destructiveHint).toBe(true);
     expect(annotations.readOnly.readOnlyHint).toBe(true);
+  });
+});
+
+describe('toJsonSchema2020', () => {
+  it('relabels the dialect and maps definitions/$ref spellings, leaving everything else intact', () => {
+    const draft7 = {
+      $schema: 'http://json-schema.org/draft-07/schema#',
+      type: 'object',
+      properties: { a: { $ref: '#/definitions/x' }, b: { type: 'array', items: { $ref: '#/definitions/x' } } },
+      required: ['a'],
+      additionalProperties: false,
+      definitions: { x: { type: 'string', description: 'keep me' } },
+    };
+    expect(toJsonSchema2020(draft7)).toEqual({
+      $schema: JSON_SCHEMA_2020_12,
+      type: 'object',
+      properties: { a: { $ref: '#/$defs/x' }, b: { type: 'array', items: { $ref: '#/$defs/x' } } },
+      required: ['a'],
+      additionalProperties: false,
+      $defs: { x: { type: 'string', description: 'keep me' } },
+    });
+    expect(draft7.$schema).toContain('draft-07'); // input not mutated
+    expect(toJsonSchema2020({ type: 'object', properties: {} })).toEqual({ $schema: JSON_SCHEMA_2020_12, type: 'object', properties: {} });
   });
 });

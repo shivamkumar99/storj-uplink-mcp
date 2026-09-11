@@ -10,6 +10,8 @@ import { getProject } from '../src/core/auth.js';
 import { createServer } from '../src/server.js';
 import { ENV } from '../src/core/env.js';
 import { getDisplayTimeZone, setDisplayTimeZone } from '../src/lib/format.js';
+import { Ajv2020 } from 'ajv/dist/2020.js';
+import { JSON_SCHEMA_2020_12 } from '../src/core/registry.js';
 
 const server = createServer();
 const client = new Client({ name: 'test-client', version: '0' });
@@ -75,6 +77,28 @@ describe('server over the MCP protocol', () => {
     expect(progress[0].message).toBe('⏳ Calculating usage for "b": 0 B so far… — listing objects…');
     expect(progress.at(-1)?.message).toBe('✅ Usage calculated for "b"');
     for (let i = 1; i < progress.length; i++) expect(progress[i].progress).toBeGreaterThan(progress[i - 1].progress);
+  });
+
+  it('emits every tool schema in the 2020-12 dialect that hosts validate with', async () => {
+    const { tools } = await client.listTools();
+    // Same validator configuration hosts use: 2020-12 only, strict keywords.
+    const ajv = new Ajv2020({ strict: true, allErrors: true });
+    for (const tool of tools) {
+      expect(tool.inputSchema.$schema, tool.name).toBe(JSON_SCHEMA_2020_12);
+      expect(() => ajv.compile(tool.inputSchema), `${tool.name} inputSchema`).not.toThrow();
+      const out = tool.outputSchema;
+      if (out) {
+        expect(out.$schema, tool.name).toBe(JSON_SCHEMA_2020_12);
+        expect(() => ajv.compile(out), `${tool.name} outputSchema`).not.toThrow();
+      }
+    }
+    expect(JSON.stringify(tools)).not.toContain('draft-07');
+    // and a real result validates against the emitted outputSchema
+    const fake = fakeProject({ objects: { 'b/x.txt': { data: Buffer.from('1') } } });
+    vi.mocked(getProject).mockResolvedValue(fake.project);
+    const res = await client.callTool({ name: 'list_objects', arguments: { bucket: 'b' } });
+    const validate = ajv.compile(tools.find((t) => t.name === 'list_objects')!.outputSchema!);
+    expect(validate(res.structuredContent), JSON.stringify(validate.errors)).toBe(true);
   });
 
   it('advertises the object-browser app on list_objects and serves it as a ui:// resource', async () => {
