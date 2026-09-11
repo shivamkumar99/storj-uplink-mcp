@@ -10,5 +10,9 @@ export default tseslint.config(
     languageOptions: {
       parserOptions: { projectService: true, tsconfigRootDir: import.meta.dirname },
     },
+    rules: {
+      // Mirrors SonarQube S2871: sort() without a comparator is unreliable.
+      '@typescript-eslint/require-array-sort-compare': 'error',
+    },
   },
 );

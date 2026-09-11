@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { defineTool } from '../registry.js';
 import { getProject } from '../auth.js';
-import { ok, safeCall, formatBytes, formatTimestamp, type McpTextResponse } from '../utils.js';
+import { ok, safeCall, formatBytes, formatTimestamp, alphabetical, type McpTextResponse } from '../utils.js';
 import { createProgress } from '../progress.js';
 import { bucketField } from './schemas.js';
 import { matchGlob } from './glob.js';
@@ -23,12 +23,12 @@ async function resolveBucketNames(
   // Pattern — list all buckets and filter
   if (pattern) {
     const all = await project.listBuckets();
-    return all.map((b) => b.name).filter((n) => matchGlob(n, pattern)).sort();
+    return all.map((b) => b.name).filter((n) => matchGlob(n, pattern)).sort(alphabetical);
   }
 
   // Neither — delete ALL buckets
   const all = await project.listBuckets();
-  return all.map((b) => b.name).sort();
+  return all.map((b) => b.name).sort(alphabetical);
 }
 
 /** Delete a bucket, optionally emptying it first. Shared by the single and batch tools. */

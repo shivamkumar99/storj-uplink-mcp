@@ -211,6 +211,16 @@ export function expiryDate(hours?: number): Date | undefined {
 }
 
 // ---------------------------------------------------------------------------
+// Alphabetical comparator for Array.prototype.sort(). The default sort orders
+// by UTF-16 code unit ("B" before "a"), which is not reliable alphabetical
+// ordering (SonarQube S2871).
+// ---------------------------------------------------------------------------
+
+export function alphabetical(a: string, b: string): number {
+  return a.localeCompare(b);
+}
+
+// ---------------------------------------------------------------------------
 // Format bytes to a human-readable string
 // ---------------------------------------------------------------------------
 

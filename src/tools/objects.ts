@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { defineTool } from '../registry.js';
 import { getProject } from '../auth.js';
-import { ok, safeCall, formatBytes, formatTimestamp, type McpTextResponse } from '../utils.js';
+import { ok, safeCall, formatBytes, formatTimestamp, alphabetical, type McpTextResponse } from '../utils.js';
 import { createProgress } from '../progress.js';
 import {
   bucketField,
@@ -41,7 +41,7 @@ async function resolveObjectKeys(
   if (pattern) {
     names = names.filter((k) => matchGlob(k, pattern));
   }
-  return names.sort();
+  return names.sort(alphabetical);
 }
 
 // ---------------------------------------------------------------------------
