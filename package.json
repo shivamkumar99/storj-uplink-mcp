@@ -18,7 +18,10 @@
     "dev": "tsc --watch",
     "postinstall": "node scripts/postinstall.js",
     "prepublishOnly": "npm run build",
-    "lint": "eslint src"
+    "lint": "eslint src",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "typecheck": "tsc --noEmit -p tsconfig.test.json"
   },
   "repository": {
     "type": "git",
@@ -39,9 +42,11 @@
     "@eslint/js": "^10.0.1",
     "@types/node": "^20",
     "@types/picomatch": "^4.0.3",
+    "@vitest/coverage-v8": "^4.1.11",
     "eslint": "^10.10.0",
     "typescript": "^5",
-    "typescript-eslint": "^8.70.0"
+    "typescript-eslint": "^8.70.0",
+    "vitest": "^4.1.11"
   },
   "keywords": [
     "storj",
