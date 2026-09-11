@@ -25,7 +25,9 @@
     "knip": "knip",
     "inspect": "npx @modelcontextprotocol/inspector node dist/index.js",
     "build:ui": "node scripts/build-ui.mjs",
-    "docker:build": "docker build --platform linux/amd64 -f infra/Dockerfile -t storj-uplink-mcp:local ."
+    "docker:build": "docker build --platform linux/amd64 -f infra/Dockerfile -t storj-uplink-mcp:local .",
+    "dev:storj": "infra/dev/storj-local.sh",
+    "test:e2e": "infra/dev/storj-local.sh e2e"
   },
   "repository": {
     "type": "git",

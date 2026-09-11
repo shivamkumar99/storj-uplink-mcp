@@ -1,0 +1,8 @@
+max-index-length = 12288
+lease = "1s"
+initialize-sql-file = "/etc/tidb-init.sql"
+[performance]
+force-init-stats = false
+[instance]
+tidb_enable_collect_execution_info = false
+tidb_record_plan_in_slow_log = 0

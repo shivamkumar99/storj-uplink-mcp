@@ -7,3 +7,6 @@ test/.tmp/
 
 # Docker credentials for the container (see infra/README.md)
 infra/.env
+infra/dev/.env
+infra/dev/exchange/*
+!infra/dev/exchange/.gitkeep

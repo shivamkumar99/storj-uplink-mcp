@@ -15,13 +15,19 @@
 
 ## Features
 
-- 🪣 **Bucket management** — create, list, delete (single or batch with glob patterns)
+- 🪣 **Bucket management** — create, list, stat, usage summary, delete (single or batch with glob patterns)
 - 📁 **Object operations** — upload, download, copy, move, delete, stat, update metadata
+- 🗂️ **Bulk transfers** — upload a whole directory or download a whole prefix, streamed with per-file progress
+- 🔍 **Smart reading of large files** — `peek_object_head`, `peek_object_tail` and `grep_object` fetch only the bytes they need, so a multi-GB log never enters the AI's context
 - 🗑️ **Batch delete** — delete multiple buckets or objects by name list, prefix, or glob pattern (`*.log`, `tmp-*`)
-- 🔗 **Sharing** — generate public URLs, create restricted access grants (time-limited, prefix-scoped, read-only)
+- 🔗 **Sharing** — public URLs, restricted access grants, and S3-compatible credentials (least privilege, time-limited, prefix-scoped)
+- 🧹 **Multipart housekeeping** — find and abort incomplete multipart uploads that still cost storage
+- 🖼️ **Interactive object browser** — hosts that support [MCP Apps](https://modelcontextprotocol.io/extensions/apps) render `list_objects` as a sortable, filterable file browser with folder navigation and previews; other hosts get the same result as text
 - ⚡ **Configurable chunk size** — tune upload/download buffer size (4 KB – 64 MB) for optimal performance
-- 📊 **Progress reporting** — real-time progress notifications for long-running operations
+- 📊 **Progress and cancellation** — MCP progress notifications for long operations; client cancellation stops transfers mid-stream
+- 🛡️ **Hardened by default** — path-traversal and Zip-Slip guards, symlink-safe directory walks, prompt-injection sanitising of untrusted keys and content, secret redaction, audit log on stderr
 - 🔐 **Encrypted credentials** — AES-256-GCM encryption with machine-specific key, `chmod 600`
+- 🐳 **Docker** — hardened distroless image and a compose file (see [infra/](infra/))
 - 🖥️ **Multi-client** — works with Claude Desktop, Cursor, Windsurf, VS Code Copilot, and any MCP client
 - 🌍 **Cross-platform** — macOS, Linux, Windows
 
@@ -209,26 +215,87 @@ Credentials are stored encrypted at `~/.storj-mcp/config.json` using AES-256-GCM
 
 ## Available Tools
 
+28 tools. Every tool declares MCP annotations (read-only / destructive / idempotent) so clients can ask before destructive calls.
+
+**Buckets**
+
 | Tool | Description |
 |------|-------------|
 | `list_buckets` | List all buckets in your project |
-| `create_bucket` | Create a new bucket |
+| `create_bucket` | Create a bucket (idempotent) |
+| `stat_bucket` | Name and creation time of one bucket; cheap existence check |
+| `bucket_usage` | Object count and total bytes for a bucket or prefix, like `du` |
 | `delete_bucket` | Delete a bucket (optionally with all objects) |
 | `delete_buckets` | Delete multiple buckets by name list or glob pattern |
-| `list_objects` | List objects in a bucket, with optional prefix filter |
-| `stat_object` | Get object info: size, creation date, metadata |
+
+**Objects**
+
+| Tool | Description |
+|------|-------------|
+| `list_objects` | List objects in a bucket, with optional prefix filter. Returns structured output and renders as an interactive browser in MCP Apps hosts |
+| `stat_object` | Object info: size, creation date, expiry, metadata |
 | `delete_object` | Delete an object |
 | `delete_objects` | Delete multiple objects by key list, prefix, or glob pattern |
 | `copy_object` | Copy an object to a new key or bucket |
 | `move_object` | Move or rename an object |
 | `update_metadata` | Update custom metadata on an object |
-| `upload_text` | Upload text/string content as an object (configurable chunk size) |
-| `upload_file` | Upload a local file to Storj (configurable chunk size) |
-| `download_text` | Download an object and return content as text (configurable chunk size) |
-| `download_file` | Download an object and save to a local path (configurable chunk size) |
-| `generate_share_url` | Create a public shareable URL for an object |
-| `share_access` | Create a restricted access grant (read-only, time-limited, prefix-scoped) |
+
+**Upload and download**
+
+| Tool | Description |
+|------|-------------|
+| `upload_text` | Upload text/string content as an object (optional metadata, expiry, chunk size) |
+| `upload_file` | Stream a local file to Storj without loading it into memory |
+| `upload_directory` | Recursively upload a folder under a key prefix; skips symlinks and sensitive paths |
+| `download_text` | Download an object and return its content as text (50 MB limit) |
+| `download_file` | Stream an object to a local path |
+| `download_prefix` | Download every object under a prefix (or a whole bucket) to a folder, preserving layout |
+
+**Reading large files without downloading them**
+
+| Tool | Description |
+|------|-------------|
+| `peek_object_head` | First N lines of an object (CSV headers, JSON structure, config files) |
+| `peek_object_tail` | Last N lines of an object, fetching only the final 512 KB (recent log entries) |
+| `grep_object` | Stream-search an object for a keyword with optional context lines; stops at `max_matches` |
+
+**Sharing and access**
+
+| Tool | Description |
+|------|-------------|
+| `generate_share_url` | Public linkshare URL for an object, optionally expiring |
+| `get_s3_credentials` | S3-compatible access key, secret and endpoint for rclone, aws-cli or any S3 SDK, scoped to a bucket/prefix with least-privilege permissions |
+| `share_access` | Restricted, serialized access grant (permissions, prefix, expiry) |
 | `serialize_access` | Serialize the current access grant to a string |
+
+**Multipart housekeeping**
+
+| Tool | Description |
+|------|-------------|
+| `list_multipart_uploads` | Pending (incomplete) multipart uploads that still consume storage |
+| `abort_multipart_upload` | Abort one incomplete multipart upload and free its storage |
+
+---
+
+## Running in Docker
+
+A hardened image (multi-stage, distroless, non-root, pinned base digests) and a compose file with read-only rootfs, dropped capabilities and resource limits live in [infra/](infra/). Build with `npm run docker:build` and point your MCP client at `docker run -i …` as shown in [infra/README.md](infra/README.md).
+
+---
+
+## Development
+
+```bash
+npm test              # unit + protocol tests (Vitest, in-memory MCP transport)
+npm run lint          # ESLint (type-aware) incl. the 200-line file limit
+npm run typecheck
+npm run knip          # unused exports / dependencies
+npm run inspect       # MCP Inspector against the built server
+npm run dev:storj up  # private Storj network in Docker (storj-up) for testing
+npm run test:e2e      # full tool lifecycle against that local network
+```
+
+The code is organised as vertical slices (one folder per feature with `schema.ts`, `handlers.ts`, `tools.ts`); see [ARCHITECTURE.md](ARCHITECTURE.md). The local Storj network for testing without touching the real network is documented in [infra/dev/README.md](infra/dev/README.md).
 
 ---
 
