@@ -57,6 +57,11 @@ output (recursive and prefix mode), `stat_object` metadata round-trip,
 `share_access`, and `delete_bucket --with_objects`. It creates a uniquely
 named bucket and removes it, even on failure.
 
+Verified on 2026-09-11 with `ghcr.io/storj/up/storj:1.158.2`: all 19 steps pass
+in about 2 seconds after the initial handshake. The run leaves
+`infra/dev/exchange/e2e-readme.txt` behind (git-ignored) because the MCP has
+no tool that deletes local files.
+
 ## Files
 
 | File | Purpose |
