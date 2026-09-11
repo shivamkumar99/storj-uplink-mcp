@@ -14,16 +14,17 @@
     "README.md"
   ],
   "scripts": {
-    "build": "tsc && chmod +x dist/index.js dist/setup.js",
+    "build": "tsc && node scripts/build-ui.mjs && chmod +x dist/index.js dist/setup.js",
     "dev": "tsc --watch",
     "postinstall": "node scripts/postinstall.js",
     "prepublishOnly": "npm run build",
-    "lint": "eslint src",
+    "lint": "eslint src ui",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
-    "typecheck": "tsc --noEmit -p tsconfig.test.json",
+    "typecheck": "tsc --noEmit -p tsconfig.test.json && tsc --noEmit -p ui/tsconfig.json",
     "knip": "knip",
-    "inspect": "npx @modelcontextprotocol/inspector node dist/index.js"
+    "inspect": "npx @modelcontextprotocol/inspector node dist/index.js",
+    "build:ui": "node scripts/build-ui.mjs"
   },
   "repository": {
     "type": "git",
@@ -35,7 +36,8 @@
   "homepage": "https://github.com/shivamkumar99/storj-uplink-mcp#readme",
   "author": "Shivam Kumar",
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.15.0",
+    "@modelcontextprotocol/ext-apps": "^1.7.5",
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "picomatch": "^4.0.7",
     "storj-uplink-nodejs": "^1.0.3",
     "zod": "^3.25.0"
@@ -45,6 +47,7 @@
     "@types/node": "^20",
     "@types/picomatch": "^4.0.3",
     "@vitest/coverage-v8": "^4.1.11",
+    "esbuild": "^0.28.2",
     "eslint": "^10.10.0",
     "knip": "^6.35.1",
     "typescript": "^5",
