@@ -35,7 +35,7 @@ async function resolveBucketNames(
 // list_buckets
 // ---------------------------------------------------------------------------
 
-export const listBucketsSchema = z.object({});
+const listBucketsSchema = z.object({});
 
 export function listBuckets(): Promise<McpTextResponse> {
   return safeCall(async () => {

@@ -10,7 +10,7 @@ import { createProgress } from '../progress.js';
 // tool supplies only the parts that vary.
 // ---------------------------------------------------------------------------
 
-export interface BatchFailure {
+interface BatchFailure {
   name: string;
   error: string;
 }

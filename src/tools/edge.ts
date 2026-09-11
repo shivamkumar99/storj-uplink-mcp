@@ -238,7 +238,7 @@ export function shareAccess(
 // serialize_access — serialize the current access grant to a string
 // ---------------------------------------------------------------------------
 
-export const serializeAccessSchema = z.object({});
+const serializeAccessSchema = z.object({});
 
 export function serializeAccess(): Promise<McpTextResponse> {
   return safeCall(async () => {

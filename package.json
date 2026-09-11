@@ -21,7 +21,8 @@
     "lint": "eslint src",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
-    "typecheck": "tsc --noEmit -p tsconfig.test.json"
+    "typecheck": "tsc --noEmit -p tsconfig.test.json",
+    "knip": "knip"
   },
   "repository": {
     "type": "git",
@@ -44,6 +45,7 @@
     "@types/picomatch": "^4.0.3",
     "@vitest/coverage-v8": "^4.1.11",
     "eslint": "^10.10.0",
+    "knip": "^6.35.1",
     "typescript": "^5",
     "typescript-eslint": "^8.70.0",
     "vitest": "^4.1.11"

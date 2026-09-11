@@ -7,7 +7,7 @@ import path from 'node:path';
 // Types
 // ---------------------------------------------------------------------------
 
-export type AuthType = 'access_grant' | 'passphrase';
+type AuthType = 'access_grant' | 'passphrase';
 
 export interface StorjMcpConfig {
   authType: AuthType;

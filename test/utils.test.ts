@@ -3,9 +3,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { StorjError } from 'storj-uplink-nodejs';
 import {
-  ok, errorResponse, safeCall, sanitizeOutput, withTimeout, validateFilePath, resolveWithinDir,
+  ok, errorResponse, safeCall, sanitizeOutput, validateFilePath, resolveWithinDir,
   expiryDate, formatBytes, formatTimestamp, optionalPrefix, toError,
-  TIMEOUT_METADATA_MS, TIMEOUT_TRANSFER_MS,
 } from '../src/utils.js';
 import { textOf } from './helpers/tmp.js';
 
@@ -45,16 +44,8 @@ describe('sanitizeOutput', () => {
   });
 });
 
-describe('withTimeout / toError', () => {
-  it('resolves in time, times out otherwise, and normalises rejections to Errors', async () => {
-    await expect(withTimeout(Promise.resolve(1), 100, 'x')).resolves.toBe(1);
-    await expect(withTimeout(new Promise(() => {}), 10, 'slow op')).rejects.toThrow('Operation timed out after 0.01s: slow op');
-    await expect(withTimeout(Promise.reject('str'), 100, 'x')).rejects.toBeInstanceOf(Error);
-    expect(TIMEOUT_METADATA_MS).toBe(30_000);
-    expect(TIMEOUT_TRANSFER_MS).toBe(300_000);
-  });
-
-  it('toError keeps Errors by identity and wraps primitives', () => {
+describe('toError', () => {
+  it('keeps Errors by identity and wraps primitives', () => {
     const e = new Error('x');
     expect(toError(e)).toBe(e);
     expect(toError('s')).toBeInstanceOf(Error);
@@ -69,6 +60,7 @@ describe('validateFilePath', () => {
   it.each([
     ['a/../b', '".." traversal'],
     [path.join(os.homedir(), 'x', '.ssh', 'id_rsa'), 'sensitive directory ".ssh"'],
+    [path.join(os.homedir(), '.ssh'), 'sensitive directory ".ssh"'],
     [path.join(os.homedir(), 'proj', '.env'), 'sensitive file ".env"'],
     ['/etc/passwd', 'system directory "/etc"'],
     ['/etc', 'system directory "/etc"'],

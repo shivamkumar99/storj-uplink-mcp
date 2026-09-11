@@ -16,7 +16,7 @@ export interface FakeObject {
   custom?: Record<string, string>;
 }
 
-export interface UploadRecord {
+interface UploadRecord {
   bucket: string;
   key: string;
   opts: unknown;

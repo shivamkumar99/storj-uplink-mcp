@@ -1,5 +1,4 @@
 import path from 'node:path';
-import os from 'node:os';
 import { StorjError } from 'storj-uplink-nodejs';
 
 // ---------------------------------------------------------------------------
@@ -94,34 +93,6 @@ export function safeCall(
 }
 
 // ---------------------------------------------------------------------------
-// Operation timeout — wrap a promise with a time limit.
-// Returns a timeout error response instead of hanging forever.
-// ---------------------------------------------------------------------------
-
-/** Default timeout for metadata operations (30 seconds) */
-export const TIMEOUT_METADATA_MS = 30_000;
-
-/** Default timeout for transfer operations (5 minutes) */
-export const TIMEOUT_TRANSFER_MS = 5 * 60_000;
-
-export function withTimeout<T>(
-  promise: Promise<T>,
-  ms: number,
-  label: string,
-): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    const timer = setTimeout(
-      () => reject(new Error(`Operation timed out after ${ms / 1000}s: ${label}`)),
-      ms,
-    );
-    promise.then(
-      (val) => { clearTimeout(timer); resolve(val); },
-      (err: unknown) => { clearTimeout(timer); reject(toError(err)); },
-    );
-  });
-}
-
-// ---------------------------------------------------------------------------
 // File path validation — prevent path traversal attacks (CWE-22).
 // The LLM can be tricked into requesting paths like ../../.ssh/id_rsa.
 // ---------------------------------------------------------------------------
@@ -140,7 +111,6 @@ const SENSITIVE_FILES = new Set([
 
 export function validateFilePath(filePath: string): void {
   const resolved = path.resolve(filePath);
-  const home = os.homedir();
 
   // Reject paths with .. traversal (even after resolution, check original)
   if (filePath.includes('..')) {
@@ -169,16 +139,6 @@ export function validateFilePath(filePath: string): void {
   for (const sysDir of systemDirs) {
     if (resolved.startsWith(sysDir + path.sep) || resolved === sysDir) {
       throw new Error(`Path rejected: system directory "${sysDir}" — "${filePath}"`);
-    }
-  }
-
-  // Reject paths inside home sensitive dirs (e.g. ~/.ssh/id_rsa)
-  if (home) {
-    for (const dir of SENSITIVE_DIRS) {
-      const sensitiveBase = path.join(home, dir);
-      if (resolved.startsWith(sensitiveBase + path.sep) || resolved === sensitiveBase) {
-        throw new Error(`Path rejected: sensitive home directory "~/${dir}" — "${filePath}"`);
-      }
     }
   }
 }
