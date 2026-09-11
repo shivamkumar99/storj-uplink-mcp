@@ -2,11 +2,11 @@ import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { fakeProject } from './helpers/fake-project.js';
-import { UI } from '../src/ui.js';
+import { UI } from '../src/core/ui-resources.js';
 
 // Real server, real protocol, in-memory transport — only the Storj connection is faked.
-vi.mock('../src/auth.js', () => ({ getProject: vi.fn(), requireAccess: vi.fn() }));
-import { getProject } from '../src/auth.js';
+vi.mock('../src/core/auth.js', () => ({ getProject: vi.fn(), requireAccess: vi.fn() }));
+import { getProject } from '../src/core/auth.js';
 import { createServer } from '../src/server.js';
 
 const server = createServer();

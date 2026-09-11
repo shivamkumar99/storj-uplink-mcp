@@ -1,22 +1,22 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { registerTools, type Tool } from './registry.js';
-import { registerUiResources } from './ui.js';
+import { registerTools, type Tool } from './core/registry.js';
+import { registerUiResources } from './core/ui-resources.js';
 
-import { tools as bucketTools } from './tools/buckets.js';
-import { tools as objectTools } from './tools/objects.js';
-import { tools as uploadTools } from './tools/upload.js';
-import { tools as downloadTools } from './tools/download.js';
-import { tools as smartReadTools } from './tools/smart_read.js';
-import { tools as edgeTools } from './tools/edge.js';
-import { tools as multipartTools } from './tools/multipart.js';
+import { tools as bucketTools } from './features/buckets/tools.js';
+import { tools as objectTools } from './features/objects/tools.js';
+import { tools as uploadTools } from './features/upload/tools.js';
+import { tools as downloadTools } from './features/download/tools.js';
+import { tools as readTools } from './features/read/tools.js';
+import { tools as edgeTools } from './features/edge/tools.js';
+import { tools as multipartTools } from './features/multipart/tools.js';
 
 // ---------------------------------------------------------------------------
 // Composition root.
 //
-// Each tool module owns its own tool definitions (see registry.ts), so adding
-// a tool to an existing module needs no change here.  Adding a whole new
-// module is one import plus one entry below.  The order here is the order
-// MCP clients list the tools in.
+// Each feature folder owns its tool definitions (see ARCHITECTURE.md); this
+// file only imports each feature's tools.ts.  Adding a tool to an existing
+// feature needs no change here; adding a feature is one import plus one entry
+// below.  The order here is the order MCP clients list the tools in.
 // ---------------------------------------------------------------------------
 
 const TOOLS: readonly Tool[] = [
@@ -24,7 +24,7 @@ const TOOLS: readonly Tool[] = [
   ...objectTools,
   ...uploadTools,
   ...downloadTools,
-  ...smartReadTools,
+  ...readTools,
   ...edgeTools,
   ...multipartTools,
 ];

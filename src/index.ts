@@ -9,7 +9,7 @@
 
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { createServer } from './server.js';
-import { shutdown } from './auth.js';
+import { shutdown } from './core/auth.js';
 
 // ---------------------------------------------------------------------------
 // Process lifecycle — signal handlers live here (SRP: index owns process

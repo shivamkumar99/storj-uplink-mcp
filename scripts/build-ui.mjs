@@ -9,7 +9,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 const VIEWS = [
-  { entry: 'ui/list-objects.ts', template: 'ui/list-objects.html', out: 'dist/ui/list-objects.html' },
+  { entry: 'ui/objects/list-objects.ts', template: 'ui/objects/list-objects.html', out: 'dist/ui/list-objects.html' },
 ];
 
 export async function buildUi() {

@@ -13,6 +13,9 @@ export default tseslint.config(
     rules: {
       // Mirrors SonarQube S2871: sort() without a comparator is unreliable.
       '@typescript-eslint/require-array-sort-compare': 'error',
+      // Architecture rule (ARCHITECTURE.md): no source file grows past 200 lines
+      // of code — split by concern (schema / constants / handlers / tools) instead.
+      'max-lines': ['error', { max: 200, skipBlankLines: true, skipComments: true }],
     },
   },
 );
