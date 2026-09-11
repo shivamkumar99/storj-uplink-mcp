@@ -10,3 +10,4 @@ infra/.env
 infra/dev/.env
 infra/dev/exchange/*
 !infra/dev/exchange/.gitkeep
+infra/dev/.history/
