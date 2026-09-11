@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { defineTool } from '../registry.js';
 import { getProject } from '../auth.js';
-import { ok, safeCall, formatBytes, formatTimestamp, alphabetical, type McpTextResponse } from '../utils.js';
+import { ok, safeCall, formatBytes, formatTimestamp, alphabetical, optionalPrefix, type McpTextResponse } from '../utils.js';
 import { createProgress } from '../progress.js';
 import {
   bucketField,
@@ -68,7 +68,7 @@ export function listObjects(
       custom: false,
     });
     if (objects.length === 0) {
-      return ok(`No objects found in "${args.bucket}"${args.prefix ? `/${args.prefix}` : ''}.`);
+      return ok(`No objects found in "${args.bucket}"${optionalPrefix(args.prefix)}.`);
     }
     progress.done(`Listed ${objects.length} objects in "${args.bucket}"`);
     const rows = objects.map((o) => {
@@ -230,11 +230,9 @@ export function deleteObjects(
     );
 
     if (targets.length === 0) {
-      const filter = args.pattern
-        ? `pattern "${args.pattern}"`
-        : args.prefix
-          ? `prefix "${args.prefix}"`
-          : 'the specified filters';
+      let filter = 'the specified filters';
+      if (args.pattern) filter = `pattern "${args.pattern}"`;
+      else if (args.prefix) filter = `prefix "${args.prefix}"`;
       return ok(`No objects matched ${filter} in bucket "${args.bucket}".`);
     }
 

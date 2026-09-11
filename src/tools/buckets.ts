@@ -31,15 +31,6 @@ async function resolveBucketNames(
   return all.map((b) => b.name).sort(alphabetical);
 }
 
-/** Delete a bucket, optionally emptying it first. Shared by the single and batch tools. */
-function deleteOneBucket(
-  project: ProjectResultStruct,
-  name: string,
-  withObjects: boolean,
-): Promise<void> {
-  return withObjects ? project.deleteBucketWithObjects(name) : project.deleteBucket(name);
-}
-
 // ---------------------------------------------------------------------------
 // list_buckets
 // ---------------------------------------------------------------------------
@@ -162,11 +153,11 @@ export function deleteBucket(
     if (args.with_objects) {
       const progress = createProgress(`Deleting bucket "${args.name}" with all objects`);
       progress.update(0, 0, 'deleting objects…');
-      await deleteOneBucket(project, args.name, true);
+      await project.deleteBucketWithObjects(args.name);
       progress.done(`Bucket "${args.name}" and all its objects have been deleted`);
       return ok(`Bucket "${args.name}" and all its objects have been deleted.`);
     }
-    await deleteOneBucket(project, args.name, false);
+    await project.deleteBucket(args.name);
     return ok(`Bucket "${args.name}" has been deleted.`);
   });
 }
@@ -217,11 +208,16 @@ export function deleteBuckets(
       );
     }
 
+    // Choose the delete operation once, where the user's flag lives
+    const remove = args.with_objects
+      ? (name: string) => project.deleteBucketWithObjects(name)
+      : (name: string) => project.deleteBucket(name);
+
     const result = await runBatch(targets, {
       label: `Deleting ${targets.length} bucket(s)`,
       verb: 'deleting',
       itemName: (name) => name,
-      op: (name) => deleteOneBucket(project, name, args.with_objects ?? false),
+      op: remove,
       done: (r) => `Deleted ${r.succeeded.length}/${r.total} bucket(s)`,
     });
 

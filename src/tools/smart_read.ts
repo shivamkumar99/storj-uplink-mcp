@@ -144,9 +144,10 @@ export function peekObjectHead(
     const result = collected.slice(0, wantLines);
     progress.done(`Read ${result.length} lines from head of "${args.key}"`);
 
+    const lineWord = result.length === 1 ? 'line' : 'lines';
     const footer =
       result.length < wantLines
-        ? `(file has ${result.length} line${result.length === 1 ? '' : 's'} total)`
+        ? `(file has ${result.length} ${lineWord} total)`
         : `(showing first ${result.length} lines — file is ${formatBytes(totalSize)})`;
 
     const body = result
@@ -268,14 +269,131 @@ export const grepObjectSchema = z.object({
     ),
 });
 
+interface ResultLine { lineNo: number; text: string; isMatch: boolean }
+
+/** Mutable state carried through a streaming grep. */
+interface ScanState {
+  /** Ring buffer of the last `ctxLines` lines before the current one (pre-context). */
+  pre: Array<{ lineNo: number; text: string }>;
+  /** Final ordered output — each entry knows whether it is a match. */
+  results: ResultLine[];
+  /** Countdown of lines still to emit after the most recent match (post-context). */
+  pendingAfter: number;
+  matchCount: number;
+  lineNo: number;
+}
+
+interface GrepScan {
+  results: ResultLine[];
+  matchCount: number;
+  truncated: boolean;
+  bytesScanned: number;
+}
+
+/** Emit the buffered pre-context lines, skipping any already present in results. */
+function emitPreContext(state: ScanState): void {
+  const alreadyEmitted = new Set(state.results.map((r) => r.lineNo));
+  for (const prev of state.pre) {
+    if (!alreadyEmitted.has(prev.lineNo)) {
+      state.results.push({ lineNo: prev.lineNo, text: prev.text, isMatch: false });
+    }
+  }
+}
+
+/** Process one line: record it if it matches or falls within post-match context, and maintain the pre-context ring. */
+function consumeLine(state: ScanState, text: string, needle: string, ctxLines: number): void {
+  state.lineNo++;
+  const isMatch = text.toLowerCase().includes(needle);
+
+  if (isMatch) {
+    emitPreContext(state);
+    state.results.push({ lineNo: state.lineNo, text, isMatch: true });
+    state.matchCount++;
+    state.pendingAfter = ctxLines;
+  } else if (state.pendingAfter > 0) {
+    state.results.push({ lineNo: state.lineNo, text, isMatch: false });
+    state.pendingAfter--;
+  }
+
+  state.pre.push({ lineNo: state.lineNo, text });
+  if (state.pre.length > ctxLines) state.pre.shift();
+}
+
+/**
+ * Stream the object collecting matching lines (plus `ctxLines` of context on
+ * either side) and stop reading as soon as `maxMatches` is reached.
+ */
+async function scanForMatches(
+  download: DownloadResultStruct,
+  needle: string,
+  ctxLines: number,
+  maxMatches: number,
+): Promise<GrepScan> {
+  const state: ScanState = { pre: [], results: [], pendingAfter: 0, matchCount: 0, lineNo: 0 };
+  let leftover = '';
+  let truncated = false;
+  let bytesScanned = 0;
+
+  await drainChunked(download, (chunk) => {
+    bytesScanned += chunk.length;
+    const { lines, leftover: lo } = splitLines(leftover, chunk.toString('utf8'));
+    leftover = lo;
+
+    for (const text of lines) {
+      consumeLine(state, text, needle, ctxLines);
+      if (state.matchCount >= maxMatches) {
+        truncated = true;
+        return false; // abort stream — we have enough
+      }
+    }
+    return true;
+  });
+
+  // Flush last partial line (file with no trailing newline)
+  if (leftover.length > 0) {
+    state.lineNo++;
+    const isMatch = leftover.toLowerCase().includes(needle);
+    if (isMatch || state.pendingAfter > 0) {
+      state.results.push({ lineNo: state.lineNo, text: leftover, isMatch });
+      if (isMatch) state.matchCount++;
+    }
+  }
+
+  return { results: state.results, matchCount: state.matchCount, truncated, bytesScanned };
+}
+
+/**
+ * Render result lines as a numbered listing. Match lines are prefixed with ►
+ * and the search term is wrapped in «...» (pure text, works in any MCP client);
+ * a separator is inserted between non-consecutive blocks.
+ */
+function formatGrepLines(results: ResultLine[], query: string): string[] {
+  // Case-insensitive replace that preserves original casing
+  const re = new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`), 'gi');
+  const highlight = (text: string): string => text.replace(re, (m) => `«${m}»`);
+
+  const lines: string[] = [];
+  let prevLineNo = -2;
+  for (const r of results) {
+    if (r.lineNo > prevLineNo + 1 && prevLineNo !== -2) {
+      lines.push(`${'─'.repeat(8)} ┼ ${'─'.repeat(52)}`);
+    }
+    const marker = r.isMatch ? '►' : ' ';
+    const text   = r.isMatch ? highlight(sanitizeOutput(r.text)) : sanitizeOutput(r.text);
+    lines.push(`${marker}${fmtLineNo(r.lineNo)} │ ${text}`);
+    prevLineNo = r.lineNo;
+  }
+  return lines;
+}
+
 export function grepObject(
   args: z.infer<typeof grepObjectSchema>,
 ): Promise<McpTextResponse> {
   return safeCall(async () => {
-    const project     = await getProject();
-    const maxMatches  = Math.min(args.max_matches, MAX_GREP_MATCHES);
-    const ctxLines    = Math.min(args.context_lines, 10);
-    const needle      = args.query.toLowerCase();
+    const project    = await getProject();
+    const maxMatches = Math.min(args.max_matches, MAX_GREP_MATCHES);
+    const ctxLines   = Math.min(args.context_lines, 10);
+    const needle     = args.query.toLowerCase();
 
     const info = await project.statObject(args.bucket, args.key);
     const totalSize = info.system.contentLength;
@@ -285,75 +403,13 @@ export function grepObject(
     }
 
     const progress = createProgress(`Searching "${args.key}" for "${args.query}"`);
-
     const download = await project.downloadObject(args.bucket, args.key, { offset: 0 });
+    const { results, matchCount, truncated, bytesScanned } =
+      await scanForMatches(download, needle, ctxLines, maxMatches);
 
-    // ── rolling state ──────────────────────────────────────────────────────
-    // pre-context:  ring buffer of the last `ctxLines` lines before current
-    // post-context: countdown of lines still to emit after a match
-    // results:      final ordered list — each entry knows whether it's a match
-    // ───────────────────────────────────────────────────────────────────────
-    interface ResultLine { lineNo: number; text: string; isMatch: boolean }
-
-    const pre: Array<{ lineNo: number; text: string }> = [];
-    const results: ResultLine[] = [];
-    let leftover      = '';
-    let lineNo        = 0;
-    let pendingAfter  = 0;
-    let matchCount    = 0;
-    let truncated     = false;
-    let bytesScanned  = 0;
-
-    await drainChunked(download, (chunk) => {
-      bytesScanned += chunk.length;
-      const { lines, leftover: lo } = splitLines(leftover, chunk.toString('utf8'));
-      leftover = lo;
-
-      for (const text of lines) {
-        lineNo++;
-        const isMatch = text.toLowerCase().includes(needle);
-
-        if (isMatch) {
-          // Emit pre-context lines (avoid duplicating lines already in results)
-          const alreadyEmitted = new Set(results.map((r) => r.lineNo));
-          for (const prev of pre) {
-            if (!alreadyEmitted.has(prev.lineNo)) {
-              results.push({ lineNo: prev.lineNo, text: prev.text, isMatch: false });
-            }
-          }
-          results.push({ lineNo, text, isMatch: true });
-          matchCount++;
-          pendingAfter = ctxLines;
-        } else if (pendingAfter > 0) {
-          results.push({ lineNo, text, isMatch: false });
-          pendingAfter--;
-        }
-
-        // Maintain pre-context ring buffer
-        pre.push({ lineNo, text });
-        if (pre.length > ctxLines) pre.shift();
-
-        if (matchCount >= maxMatches) {
-          truncated = true;
-          return false; // abort stream — we have enough
-        }
-      }
-      return true;
-    });
-
-    // Flush last partial line (file with no trailing newline)
-    if (leftover.length > 0) {
-      lineNo++;
-      const isMatch = leftover.toLowerCase().includes(needle);
-      if (isMatch || pendingAfter > 0) {
-        results.push({ lineNo, text: leftover, isMatch });
-        if (isMatch) matchCount++;
-      }
-    }
-
+    const matchWord = matchCount === 1 ? 'match' : 'matches';
     progress.done(
-      `Found ${matchCount} match${matchCount === 1 ? '' : 'es'} in "${args.key}" ` +
-      `(${formatBytes(bytesScanned)} scanned)`,
+      `Found ${matchCount} ${matchWord} in "${args.key}" (${formatBytes(bytesScanned)} scanned)`,
     );
 
     if (matchCount === 0) {
@@ -363,41 +419,15 @@ export function grepObject(
       );
     }
 
-    // ── format output ──────────────────────────────────────────────────────
-    // Match lines are prefixed with ► and their text highlighted by wrapping
-    // the search term in «...» markers (pure text, works in any MCP client).
-    // ───────────────────────────────────────────────────────────────────────
-    function highlight(text: string): string {
-      // Case-insensitive replace that preserves original casing
-      const re = new RegExp(
-        args.query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'),
-        'gi',
-      );
-      return text.replace(re, (m) => `«${m}»`);
-    }
-
-    // Insert a separator between non-consecutive result blocks
-    const lines: string[] = [];
-    let prevLineNo = -2;
-    for (const r of results) {
-      if (r.lineNo > prevLineNo + 1 && prevLineNo !== -2) {
-        lines.push(`${'─'.repeat(8)} ┼ ${'─'.repeat(52)}`);
-      }
-      const marker = r.isMatch ? '►' : ' ';
-      const text   = r.isMatch ? highlight(sanitizeOutput(r.text)) : sanitizeOutput(r.text);
-      lines.push(`${marker}${fmtLineNo(r.lineNo)} │ ${text}`);
-      prevLineNo = r.lineNo;
-    }
-
     const scannedNote = truncated
       ? `⚠  Stopped after ${maxMatches} matches — ${formatBytes(bytesScanned)} of ${formatBytes(totalSize)} scanned.`
-      : `${matchCount} match${matchCount === 1 ? '' : 'es'} found — ${formatBytes(bytesScanned)} scanned (full file).`;
+      : `${matchCount} ${matchWord} found — ${formatBytes(bytesScanned)} scanned (full file).`;
 
     return ok(
       `grep "${args.query}" in "${args.bucket}/${args.key}":\n\n` +
       `       │ line content\n` +
       `───────┼${'─'.repeat(60)}\n` +
-      lines.join('\n') + '\n' +
+      formatGrepLines(results, args.query).join('\n') + '\n' +
       `───────┴${'─'.repeat(60)}\n` +
       scannedNote,
     );

@@ -66,7 +66,7 @@ async function resolveAccess(): Promise<AccessResultStruct> {
 // ---------------------------------------------------------------------------
 
 export async function getProject(): Promise<ProjectResultStruct> {
-  if (_project && _project.isOpen) {
+  if (_project?.isOpen) {
     return _project;
   }
 
@@ -96,7 +96,7 @@ export async function requireAccess(): Promise<AccessResultStruct> {
 // ---------------------------------------------------------------------------
 
 export async function shutdown(): Promise<void> {
-  if (_project && _project.isOpen) {
+  if (_project?.isOpen) {
     try {
       await _project.close();
       console.error('[storj-mcp] Project connection closed');

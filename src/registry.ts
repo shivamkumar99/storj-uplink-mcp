@@ -64,11 +64,14 @@ export function registerTools(server: McpServer, tools: readonly Tool[]): void {
     }
     seen.add(tool.name);
 
-    server.tool(tool.name, tool.description, tool.schema.shape, (args) =>
-      guard(() => {
-        auditLog(tool.name, args);
-        return tool.handler(args);
-      }),
+    server.registerTool(
+      tool.name,
+      { description: tool.description, inputSchema: tool.schema.shape },
+      (args) =>
+        guard(() => {
+          auditLog(tool.name, args);
+          return tool.handler(args);
+        }),
     );
   }
 }

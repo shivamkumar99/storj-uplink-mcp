@@ -10,16 +10,25 @@
  * immediately.
  */
 
-import type { Server } from '@modelcontextprotocol/sdk/server/index.js';
+import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+
+/** The low-level server, reached through McpServer so the deprecated `Server` symbol is never named. */
+type LowLevelServer = McpServer['server'];
 
 // ---------------------------------------------------------------------------
 // Singleton server reference — set once from server.ts after createServer()
 // ---------------------------------------------------------------------------
 
-let _server: Server | null = null;
+let _server: LowLevelServer | null = null;
 
-export function setServer(server: Server): void {
+export function setServer(server: LowLevelServer): void {
   _server = server;
+}
+
+/** Fire-and-forget — we never want a logging failure to break a tool. */
+function send(message: string): void {
+  if (!_server) return;
+  _server.sendLoggingMessage({ level: 'info', data: message }).catch(() => {});
 }
 
 // ---------------------------------------------------------------------------
@@ -46,12 +55,6 @@ export interface ProgressReporter {
 
 export function createProgress(label: string): ProgressReporter {
   let lastSentAt = 0;
-
-  function send(message: string): void {
-    if (!_server) return;
-    // Fire-and-forget — we never want a logging failure to break a tool
-    _server.sendLoggingMessage({ level: 'info', data: message }).catch(() => {});
-  }
 
   return {
     update(current: number, total: number, detail?: string): void {

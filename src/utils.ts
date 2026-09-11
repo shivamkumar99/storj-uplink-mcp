@@ -35,7 +35,7 @@ function redactSecrets(text: string): string {
   return text
     .replace(ACCESS_GRANT_RE, '[REDACTED]')
     .replace(SECRET_PATTERN_RE, (match) => {
-      const sep = match.indexOf('=') !== -1 ? '=' : ':';
+      const sep = match.includes('=') ? '=' : ':';
       const key = match.slice(0, match.indexOf(sep) + 1);
       return `${key} [REDACTED]`;
     });
@@ -133,10 +133,10 @@ const SENSITIVE_DIRS = [
 ];
 
 /** Sensitive filenames (dotfiles with secrets) */
-const SENSITIVE_FILES = [
+const SENSITIVE_FILES = new Set([
   '.env', '.env.local', '.env.production', '.netrc', '.npmrc',
   '.bash_history', '.zsh_history',
-];
+]);
 
 export function validateFilePath(filePath: string): void {
   const resolved = path.resolve(filePath);
@@ -148,22 +148,22 @@ export function validateFilePath(filePath: string): void {
   }
 
   // Reject sensitive directories
-  const parts = resolved.split(path.sep);
+  const parts = new Set(resolved.split(path.sep));
   for (const dir of SENSITIVE_DIRS) {
-    if (parts.includes(dir)) {
+    if (parts.has(dir)) {
       throw new Error(`Path rejected: accesses sensitive directory "${dir}" — "${filePath}"`);
     }
   }
 
   // Reject sensitive filenames
   const basename = path.basename(resolved);
-  if (SENSITIVE_FILES.includes(basename)) {
+  if (SENSITIVE_FILES.has(basename)) {
     throw new Error(`Path rejected: sensitive file "${basename}" — "${filePath}"`);
   }
 
   // Reject system directories
   const systemDirs = process.platform === 'win32'
-    ? ['C:\\Windows', 'C:\\Program Files']
+    ? [String.raw`C:\Windows`, String.raw`C:\Program Files`]
     : ['/etc', '/var', '/usr', '/sys', '/proc', '/boot', '/dev'];
 
   for (const sysDir of systemDirs) {
@@ -208,6 +208,15 @@ export function resolveWithinDir(baseDir: string, relativePath: string): string 
 export function expiryDate(hours?: number): Date | undefined {
   if (hours === undefined) return undefined;
   return new Date(Date.now() + hours * 3600 * 1000);
+}
+
+// ---------------------------------------------------------------------------
+// Render an optional key prefix as a "/prefix" message suffix, or "" when absent.
+// Keeps call sites free of nested template literals (SonarQube S4624).
+// ---------------------------------------------------------------------------
+
+export function optionalPrefix(prefix?: string): string {
+  return prefix ? `/${prefix}` : '';
 }
 
 // ---------------------------------------------------------------------------

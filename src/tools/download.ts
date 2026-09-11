@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { defineTool } from '../registry.js';
 import { getProject } from '../auth.js';
-import { ok, safeCall, formatBytes, validateFilePath, resolveWithinDir, sanitizeOutput, type McpTextResponse } from '../utils.js';
+import { ok, safeCall, formatBytes, validateFilePath, resolveWithinDir, sanitizeOutput, optionalPrefix, type McpTextResponse } from '../utils.js';
 import { bucketField, keyField, chunkSizeField } from './schemas.js';
 import { downloadObject, memorySink, fileSink } from './transfer.js';
 import { runBatch, formatBatchReport } from './batch.js';
@@ -127,7 +127,7 @@ export function downloadPrefix(
     const keys = objects.filter((o) => !o.isPrefix).map((o) => o.key);
 
     if (keys.length === 0) {
-      return ok(`No objects found in "${args.bucket}"${prefix ? `/${prefix}` : ''}.`);
+      return ok(`No objects found in "${args.bucket}"${optionalPrefix(prefix)}.`);
     }
 
     const capped = keys.length > MAX_PREFIX_OBJECTS;

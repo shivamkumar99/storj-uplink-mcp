@@ -180,13 +180,14 @@ export function getS3Credentials(
     );
 
     progress.done(`S3 credentials issued for "${args.bucket}"`);
+    const scope = args.prefix ? `/${args.prefix}` : ' (whole bucket)';
 
     return ok(
       `S3-compatible credentials (keep the secret key safe — anyone with it has the access above):\n\n` +
         `  Endpoint:        ${credentials.endpoint}\n` +
         `  Access Key ID:   ${credentials.accessKeyId}\n` +
         `  Secret Key:      ${credentials.secretKey}\n\n` +
-        `  Scope:           ${args.bucket}${args.prefix ? `/${args.prefix}` : ' (whole bucket)'}\n` +
+        `  Scope:           ${args.bucket}${scope}\n` +
         `  Permissions:     ${describePermissions(permission)}\n` +
         `  Expires:         ${notAfter ? notAfter.toISOString() : 'never'}\n\n` +
         `Use with rclone/aws-cli/S3 SDKs, e.g.:\n` +

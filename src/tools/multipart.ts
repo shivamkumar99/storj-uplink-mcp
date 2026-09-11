@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { defineTool } from '../registry.js';
 import { listMultipartUploads, MultipartUpload } from 'storj-uplink-nodejs';
 import { getProject } from '../auth.js';
-import { ok, safeCall, formatTimestamp, type McpTextResponse } from '../utils.js';
+import { ok, safeCall, formatTimestamp, optionalPrefix, type McpTextResponse } from '../utils.js';
 import { createProgress } from '../progress.js';
 import { bucketField, keyField } from './schemas.js';
 
@@ -37,7 +37,7 @@ export function listPendingUploads(
 
     const pending = uploads.filter((u) => !u.isPrefix);
     if (pending.length === 0) {
-      return ok(`No pending multipart uploads in "${args.bucket}"${args.prefix ? `/${args.prefix}` : ''}.`);
+      return ok(`No pending multipart uploads in "${args.bucket}"${optionalPrefix(args.prefix)}.`);
     }
 
     const rows = pending.map(

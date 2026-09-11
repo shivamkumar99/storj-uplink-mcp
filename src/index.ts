@@ -19,14 +19,12 @@ import { shutdown } from './auth.js';
 process.on('SIGINT', () => { void shutdown().then(() => process.exit(0)); });
 process.on('SIGTERM', () => { void shutdown().then(() => process.exit(0)); });
 
-async function main(): Promise<void> {
+try {
   const server = createServer();
   const transport = new StdioServerTransport();
   await server.connect(transport);
   console.error('[storj-mcp] Server running — waiting for requests');
-}
-
-main().catch((err: unknown) => {
+} catch (err: unknown) {
   console.error('[storj-mcp] Fatal error:', err);
   process.exit(1);
-});
+}
