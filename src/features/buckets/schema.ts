@@ -1,7 +1,12 @@
 import { z } from 'zod';
 import { bucketField } from '../../shared/fields.js';
 
-export const listBucketsSchema = z.object({});
+export const listBucketsSchema = z.object({
+  sort_by: z
+    .enum(['name', 'created'])
+    .optional()
+    .describe('Order of the listing: "name" (default — the order Storj returns) or "created" (oldest first)'),
+});
 
 export const createBucketSchema = z.object({
   name: z.string().min(1).describe('Bucket name (3-63 lowercase alphanumeric characters and hyphens)'),

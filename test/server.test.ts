@@ -8,6 +8,8 @@ import { UI } from '../src/core/ui-resources.js';
 vi.mock('../src/core/auth.js', () => ({ getProject: vi.fn(), requireAccess: vi.fn() }));
 import { getProject } from '../src/core/auth.js';
 import { createServer } from '../src/server.js';
+import { ENV } from '../src/core/env.js';
+import { getDisplayTimeZone, setDisplayTimeZone } from '../src/lib/format.js';
 
 const server = createServer();
 const client = new Client({ name: 'test-client', version: '0' });
@@ -19,6 +21,31 @@ beforeAll(async () => {
   await client.connect(ct);
 });
 afterAll(async () => { await client.close(); await server.close(); vi.restoreAllMocks(); });
+
+describe('startup display time zone (STORJ_MCP_TIMEZONE)', () => {
+  const restore = () => { delete process.env[ENV.TIMEZONE]; setDisplayTimeZone('UTC'); };
+
+  it('applies a valid zone and ignores an unknown one with a stderr warning', async () => {
+    const warn = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      process.env[ENV.TIMEZONE] = 'Asia/Kolkata';
+      await createServer().close();
+      expect(getDisplayTimeZone()).toBe('Asia/Kolkata');
+
+      process.env[ENV.TIMEZONE] = 'Mars/Olympus';
+      await createServer().close();
+      expect(getDisplayTimeZone()).toBe('Asia/Kolkata'); // unchanged
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('Ignoring STORJ_MCP_TIMEZONE="Mars/Olympus"'));
+
+      restore();
+      await createServer().close();
+      expect(getDisplayTimeZone()).toBe('UTC');
+    } finally {
+      restore();
+      warn.mockRestore();
+    }
+  });
+});
 
 describe('server over the MCP protocol', () => {
   it('lists all 28 tools, each with explicit annotations, in a deterministic order', async () => {

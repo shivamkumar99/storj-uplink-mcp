@@ -10,6 +10,7 @@ describe('env', () => {
       SATELLITE: 'STORJ_SATELLITE',
       API_KEY: 'STORJ_API_KEY',
       PASSPHRASE: 'STORJ_PASSPHRASE',
+      TIMEZONE: 'STORJ_MCP_TIMEZONE',
     });
   });
 

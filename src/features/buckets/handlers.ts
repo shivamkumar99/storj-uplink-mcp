@@ -3,19 +3,23 @@ import { getProject } from '../../core/auth.js';
 import { createProgress } from '../../core/progress.js';
 import { ok, safeCall, type McpTextResponse } from '../../lib/response.js';
 import { formatBytes, formatTimestamp } from '../../lib/format.js';
-import type { createBucketSchema, statBucketSchema, bucketUsageSchema, deleteBucketSchema } from './schema.js';
+import type { listBucketsSchema, createBucketSchema, statBucketSchema, bucketUsageSchema, deleteBucketSchema } from './schema.js';
 
 // ---------------------------------------------------------------------------
 // list_buckets
 // ---------------------------------------------------------------------------
 
-export function listBuckets(): Promise<McpTextResponse> {
+export function listBuckets(
+  args: z.infer<typeof listBucketsSchema> = {},
+): Promise<McpTextResponse> {
   return safeCall(async () => {
     const project = await getProject();
-    const buckets = await project.listBuckets();
+    const buckets = await project.listBuckets(); // Storj's own order: by name
     if (buckets.length === 0) {
       return ok('No buckets found in this project.');
     }
+    // Only re-order when asked; ties keep Storj's name order (sort is stable).
+    if (args.sort_by === 'created') buckets.sort((a, b) => a.created - b.created);
     const rows = buckets.map((b) => `  - ${b.name}  (created: ${formatTimestamp(b.created)})`);
     return ok(`Buckets (${buckets.length}):\n${rows.join('\n')}`);
   });

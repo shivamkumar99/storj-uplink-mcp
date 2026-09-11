@@ -20,6 +20,14 @@ describe('list / create / stat', () => {
     expect(textOf(await listBuckets())).toBe('No buckets found in this project.');
   });
 
+  it('sort_by=created orders oldest first; default keeps Storj name order', async () => {
+    use(fakeProject({ buckets: ['zeta', 'alpha', 'mid'], bucketCreated: { zeta: 1_700_000_000, alpha: 1_700_000_200, mid: 1_700_000_100 } }));
+    const names = (r: string) => [...r.matchAll(/^  - (\S+)/gm)].map((m) => m[1]);
+    expect(names(textOf(await listBuckets()))).toEqual(['alpha', 'mid', 'zeta']);
+    expect(names(textOf(await listBuckets({ sort_by: 'name' })))).toEqual(['alpha', 'mid', 'zeta']);
+    expect(names(textOf(await listBuckets({ sort_by: 'created' })))).toEqual(['zeta', 'mid', 'alpha']);
+  });
+
   it('creates idempotently and stats', async () => {
     expect(textOf(await createBucket({ name: 'new' }))).toBe('Bucket "new" is ready (created: 2023-11-14T22:13:20.000Z)');
     expect(JSON.parse(textOf(await statBucket({ name: 'new' })))).toEqual({ name: 'new', created: '2023-11-14T22:13:20.000Z' });

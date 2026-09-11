@@ -189,6 +189,14 @@ Or with individual credentials:
 
 Env vars take priority over the config file.
 
+Optional display setting, independent of credentials:
+
+| Variable | Effect |
+|---|---|
+| `STORJ_MCP_TIMEZONE` | IANA time zone for timestamps in tool output, e.g. `Asia/Kolkata` → `2026-09-11T21:19:28+05:30`. Unset = UTC (`…Z`). Unknown names are ignored with a warning on stderr. |
+
+`list_buckets` also accepts `sort_by: "created"` to order by creation time instead of Storj's name order.
+
 ---
 
 ## Managing Credentials

@@ -36,7 +36,8 @@ function byteOrder(a: string, b: string): number {
 }
 const CREATED = 1_700_000_000;
 
-export function fakeProject(initial: { buckets?: string[]; objects?: Record<string, FakeObject> } = {}) {
+export function fakeProject(initial: { buckets?: string[]; bucketCreated?: Record<string, number>; objects?: Record<string, FakeObject> } = {}) {
+  const createdOf = (name: string) => initial.bucketCreated?.[name] ?? CREATED;
   const buckets = new Set(initial.buckets ?? []);
   const store = new Map<string, FakeObject>(Object.entries(initial.objects ?? {}));
   for (const k of store.keys()) buckets.add(k.split('/')[0]);
@@ -62,7 +63,7 @@ export function fakeProject(initial: { buckets?: string[]; objects?: Record<stri
     async close() { calls.push('close'); },
 
     // ---- buckets
-    async listBuckets() { return [...buckets].sort(byteOrder).map((name) => ({ name, created: CREATED })); },
+    async listBuckets() { return [...buckets].sort(byteOrder).map((name) => ({ name, created: createdOf(name) })); },
     async createBucket(name: string) { buckets.add(name); return { name, created: CREATED }; },
     async ensureBucket(name: string) { buckets.add(name); return { name, created: CREATED }; },
     async statBucket(name: string) {

@@ -13,6 +13,8 @@ export const ENV = {
   SATELLITE: 'STORJ_SATELLITE',
   API_KEY: 'STORJ_API_KEY',
   PASSPHRASE: 'STORJ_PASSPHRASE',
+  /** IANA zone for timestamps in tool output, e.g. "Asia/Kolkata". Unset = UTC. */
+  TIMEZONE: 'STORJ_MCP_TIMEZONE',
 } as const;
 
 /** Credentials as currently present in the environment. */
@@ -37,6 +39,11 @@ export function readStorjEnv(): StorjEnv {
     apiKey: read(ENV.API_KEY),
     passphrase: read(ENV.PASSPHRASE),
   };
+}
+
+/** The display time zone requested via the environment, if any. */
+export function readDisplayTimeZone(): string | undefined {
+  return read(ENV.TIMEZONE);
 }
 
 type PassphraseEnv = StorjEnv & Required<Pick<StorjEnv, 'satellite' | 'apiKey' | 'passphrase'>>;

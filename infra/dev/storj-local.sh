@@ -32,6 +32,12 @@ SATELLITE_IN_NETWORK="satellite-api:7777"
 
 log() { printf '[storj-local] %s\n' "$*" >&2; }
 
+# IANA name of the host's zone (macOS and most Linux link /etc/localtime into a zoneinfo tree).
+host_time_zone() {
+  local tz; tz="$(readlink /etc/localtime 2>/dev/null | sed -n 's#.*/zoneinfo/##p')"
+  echo "${tz:-UTC}"
+}
+
 require_compose_file() {
   [[ -f "$HERE/docker-compose.yaml" ]] || { log "docker-compose.yaml missing — run: $0 regenerate"; exit 1; }
   local declared
@@ -69,6 +75,7 @@ credentials() {
     echo "# Satellite: 12whfK1EDvHJtajBiAUeajQLYcWqxcQmdYQU5zX5cCf6bAxfgu4@$SATELLITE_IN_NETWORK"
     echo "STORJ_ACCESS_GRANT=$grant"
     echo "UPLINK_LOG_LEVEL=error"
+    echo "STORJ_MCP_TIMEZONE=$(host_time_zone)"
   } > "$ENV_FILE"
   chmod 600 "$ENV_FILE"
   log "wrote $ENV_FILE"

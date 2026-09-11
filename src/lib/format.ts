@@ -24,8 +24,53 @@ export function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
 }
 
-/** Format a Unix timestamp (seconds) to an ISO string, or 'none'. */
+// ---------------------------------------------------------------------------
+// Timestamps.  Storj reports Unix seconds; they are rendered as ISO-8601 in a
+// configurable display time zone (default UTC, set once at startup from
+// STORJ_MCP_TIMEZONE).  In UTC the output is the familiar "…Z" form; in any
+// other zone it carries the numeric offset, e.g. 2026-09-11T21:19:28+05:30,
+// so the value stays unambiguous wherever it is pasted.
+// ---------------------------------------------------------------------------
+
+let displayTimeZone = 'UTC';
+
+/** True when `tz` is an IANA time-zone name this runtime knows (e.g. "Asia/Kolkata"). */
+export function isValidTimeZone(tz: string): boolean {
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: tz });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Set the zone used by formatTimestamp.  Call once at startup; UTC by default. */
+export function setDisplayTimeZone(tz: string): void {
+  if (!isValidTimeZone(tz)) throw new Error(`Unknown time zone: "${tz}"`);
+  displayTimeZone = tz;
+}
+
+export function getDisplayTimeZone(): string {
+  return displayTimeZone;
+}
+
+function isoInTimeZone(date: Date, tz: string): string {
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat('en-US', {
+      timeZone: tz, hourCycle: 'h23',
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', second: '2-digit',
+      timeZoneName: 'longOffset',
+    }).formatToParts(date).map((p) => [p.type, p.value]),
+  );
+  // "GMT+05:30" → "+05:30"; plain "GMT" (zero offset) → "+00:00"
+  const offset = parts.timeZoneName === 'GMT' ? '+00:00' : parts.timeZoneName.replace('GMT', '');
+  return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}:${parts.second}${offset}`;
+}
+
+/** Format a Unix timestamp (seconds) as ISO-8601 in the display time zone, or 'none'. */
 export function formatTimestamp(ts: number | null): string {
   if (!ts) return 'none';
-  return new Date(ts * 1000).toISOString();
+  const date = new Date(ts * 1000);
+  return displayTimeZone === 'UTC' ? date.toISOString() : isoInTimeZone(date, displayTimeZone);
 }

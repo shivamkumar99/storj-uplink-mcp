@@ -1,6 +1,8 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { registerTools, type Tool } from './core/registry.js';
 import { registerUiResources } from './core/ui-resources.js';
+import { ENV, readDisplayTimeZone } from './core/env.js';
+import { isValidTimeZone, setDisplayTimeZone } from './lib/format.js';
 
 import { tools as bucketTools } from './features/buckets/tools.js';
 import { tools as objectTools } from './features/objects/tools.js';
@@ -29,7 +31,19 @@ const TOOLS: readonly Tool[] = [
   ...multipartTools,
 ];
 
+/** Honour STORJ_MCP_TIMEZONE for timestamps in tool output; fall back to UTC on nonsense. */
+function applyDisplayTimeZone(): void {
+  const tz = readDisplayTimeZone();
+  if (!tz) return;
+  if (isValidTimeZone(tz)) {
+    setDisplayTimeZone(tz);
+  } else {
+    console.error(`[storj-mcp] Ignoring ${ENV.TIMEZONE}="${tz}" (unknown time zone); timestamps stay in UTC`);
+  }
+}
+
 export function createServer(): McpServer {
+  applyDisplayTimeZone();
   const server = new McpServer({
     name: 'storj-uplink-mcp',
     version: '1.0.1',
