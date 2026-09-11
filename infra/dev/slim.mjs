@@ -17,6 +17,12 @@ for (const n of nodes.filter((n) => n > KEEP_NODES)) {
   // remove the whole indented service block for storagenodeN
   text = text.replace(new RegExp(`^  storagenode${n}:\\n(?:    .*\\n|\\n)*?(?=^  \\S|^networks:|$(?![\\r\\n]))`, 'm'), '');
 }
+// storj-up writes absolute host paths into bind mounts; make them relative to
+// this directory so the file is portable and safe to commit.
+const here = path.dirname(file);
+text = text.replaceAll(here + '/', './').replaceAll(here, '.');
+if (text.includes('/Users/') || text.includes('/home/')) { console.error('[slim] ERROR: absolute host path still present'); process.exit(1); }
+
 fs.writeFileSync(file, text);
 const left = (text.match(/^  storagenode\d+:$/gm) || []).length;
 const rs = ['MIN', 'REPAIR', 'SUCCESS', 'TOTAL'].map((k) => (text.match(new RegExp(`STORJ_METAINFO_RS_${k}: "(\\d+)"`)) || [])[1] ?? '?');
