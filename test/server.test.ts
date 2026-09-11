@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { fakeProject } from './helpers/fake-project.js';
+import { UI } from '../src/ui.js';
 
 // Real server, real protocol, in-memory transport — only the Storj connection is faked.
 vi.mock('../src/auth.js', () => ({ getProject: vi.fn(), requireAccess: vi.fn() }));
@@ -47,6 +48,40 @@ describe('server over the MCP protocol', () => {
     expect(progress[0].message).toBe('⏳ Calculating usage for "b": 0 B so far… — listing objects…');
     expect(progress.at(-1)?.message).toBe('✅ Usage calculated for "b"');
     for (let i = 1; i < progress.length; i++) expect(progress[i].progress).toBeGreaterThan(progress[i - 1].progress);
+  });
+
+  it('advertises the object-browser app on list_objects and serves it as a ui:// resource', async () => {
+    const { tools } = await client.listTools();
+    const listObjects = tools.find((t) => t.name === 'list_objects');
+    expect(listObjects?._meta).toEqual({ ui: { resourceUri: UI.listObjects } });
+    expect(listObjects?.outputSchema).toMatchObject({ type: 'object', required: expect.arrayContaining(['bucket', 'objects']) });
+    expect(tools.filter((t) => t._meta)).toHaveLength(1);                     // only the one view so far
+
+    const { resources } = await client.listResources();
+    expect(resources.map((r) => r.uri)).toContain(UI.listObjects);
+    const { contents } = await client.readResource({ uri: UI.listObjects });
+    expect(contents[0]).toMatchObject({ uri: UI.listObjects, mimeType: 'text/html;profile=mcp-app' });
+    const html = String((contents[0] as { text: string }).text);
+    expect(html).toContain('<title>Storj object browser</title>');
+    expect(html).toContain('<script type="module">');
+    expect(html).toContain('ui/initialize');                                   // the App SDK is inlined, not linked
+    expect(html).not.toMatch(/<script[^>]+src=/);
+  });
+
+  it('returns validated structuredContent from list_objects for the app to render', async () => {
+    const fake = fakeProject({ objects: { 'b/docs/a.txt': { data: Buffer.from('12345') }, 'b/z.bin': { data: Buffer.from('x') } } });
+    vi.mocked(getProject).mockResolvedValue(fake.project);
+    const res = await client.callTool({ name: 'list_objects', arguments: { bucket: 'b', recursive: true } });
+    expect(res.isError).toBeUndefined();
+    expect(res.structuredContent).toEqual({
+      bucket: 'b', prefix: '', recursive: true,
+      objects: [
+        { key: 'docs/a.txt', is_prefix: false, size_bytes: 5, created: '2023-11-14T22:13:20.000Z' },
+        { key: 'z.bin', is_prefix: false, size_bytes: 1, created: '2023-11-14T22:13:20.000Z' },
+      ],
+    });
+    const empty = await client.callTool({ name: 'list_objects', arguments: { bucket: 'b', prefix: 'none/' } });
+    expect(empty.structuredContent).toEqual({ bucket: 'b', prefix: 'none/', recursive: false, objects: [] });
   });
 
   it('returns a protocol error (isError) for invalid arguments before the handler runs', async () => {

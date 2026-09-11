@@ -1,7 +1,9 @@
 import { z } from 'zod';
 import { defineTool, annotations } from '../registry.js';
 import { getProject } from '../auth.js';
-import { ok, safeCall, formatBytes, formatTimestamp, optionalPrefix, sanitizeOutput, sanitizeRecord, type McpTextResponse } from '../utils.js';
+import { ok, okStructured, safeCall, formatBytes, formatTimestamp, optionalPrefix, sanitizeOutput, sanitizeRecord, type McpTextResponse } from '../utils.js';
+import { UI } from '../ui.js';
+import { listObjectsOutput, type ListObjectsResult } from './objects.output.js';
 import { createProgress } from '../progress.js';
 import {
   bucketField,
@@ -61,21 +63,34 @@ export function listObjects(
     const project = await getProject();
     const progress = createProgress(`Listing objects in "${args.bucket}"`);
     progress.update(0, 0, 'querying…');
+    const recursive = args.recursive ?? false;
     const objects = await project.listObjects(args.bucket, {
       prefix: args.prefix,
-      recursive: args.recursive ?? false,
+      recursive,
       system: true,
       custom: false,
     });
+
+    // Structured result for clients/apps; keys are untrusted so they are sanitised.
+    const structured: ListObjectsResult = {
+      bucket: args.bucket,
+      prefix: args.prefix ?? '',
+      recursive,
+      objects: objects.map((o) => ({
+        key: sanitizeOutput(o.key),
+        is_prefix: o.isPrefix,
+        ...(o.isPrefix ? {} : { size_bytes: o.system.contentLength, created: formatTimestamp(o.system.created) }),
+      })),
+    };
+
     if (objects.length === 0) {
-      return ok(`No objects found in "${args.bucket}"${optionalPrefix(args.prefix)}.`);
+      return okStructured(`No objects found in "${args.bucket}"${optionalPrefix(args.prefix)}.`, structured);
     }
     progress.done(`Listed ${objects.length} objects in "${args.bucket}"`);
-    const rows = objects.map((o) => {
-      if (o.isPrefix) return `  📁 ${sanitizeOutput(o.key)}`;
-      return `  📄 ${sanitizeOutput(o.key)}  (${formatBytes(o.system.contentLength)}, created: ${formatTimestamp(o.system.created)})`;
-    });
-    return ok(`Objects in "${args.bucket}" (${objects.length}):\n${rows.join('\n')}`);
+    const rows = structured.objects.map((o) =>
+      o.is_prefix ? `  📁 ${o.key}` : `  📄 ${o.key}  (${formatBytes(o.size_bytes ?? 0)}, created: ${o.created ?? 'none'})`,
+    );
+    return okStructured(`Objects in "${args.bucket}" (${objects.length}):\n${rows.join('\n')}`, structured);
   });
 }
 
@@ -261,6 +276,8 @@ export const tools = [
     annotations: annotations.readOnly,
     description: 'List objects in a Storj bucket, optionally filtered by prefix',
     schema: listObjectsSchema,
+    outputSchema: listObjectsOutput,
+    ui: { resourceUri: UI.listObjects },
     handler: listObjects,
   }),
   defineTool({

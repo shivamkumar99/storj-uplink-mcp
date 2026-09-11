@@ -1,5 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { registerTools, type Tool } from './registry.js';
+import { registerUiResources } from './ui.js';
 
 import { tools as bucketTools } from './tools/buckets.js';
 import { tools as objectTools } from './tools/objects.js';
@@ -35,6 +36,7 @@ export function createServer(): McpServer {
   });
 
   registerTools(server, TOOLS);
+  registerUiResources(server);
 
   return server;
 }

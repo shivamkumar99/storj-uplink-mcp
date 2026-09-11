@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { StorjError } from 'storj-uplink-nodejs';
 import {
-  ok, errorResponse, safeCall, sanitizeOutput, sanitizeRecord, validateFilePath, resolveWithinDir,
+  ok, okStructured, errorResponse, safeCall, sanitizeOutput, sanitizeRecord, validateFilePath, resolveWithinDir,
   expiryDate, formatBytes, formatTimestamp, optionalPrefix, toError,
 } from '../src/utils.js';
 import { textOf } from './helpers/tmp.js';
@@ -12,6 +12,10 @@ describe('ok / errorResponse / safeCall', () => {
   it('ok passes strings through and pretty-prints objects', () => {
     expect(textOf(ok('hi'))).toBe('hi');
     expect(textOf(ok({ a: 1 }))).toBe('{\n  "a": 1\n}');
+  });
+
+  it('okStructured carries structuredContent with the text', () => {
+    expect(okStructured('t', { n: 1 })).toEqual({ content: [{ type: 'text', text: 't' }], structuredContent: { n: 1 } });
   });
 
   it('formats Error, non-Error and StorjError (with details)', () => {

@@ -26,6 +26,13 @@ describe('list / stat', () => {
     expect(textOf(await listObjects({ bucket: 'empty' }))).toBe('No objects found in "empty".');
   });
 
+  it('always returns structuredContent alongside the text', async () => {
+    const res = await listObjects({ bucket: 'b', prefix: 'photos/', recursive: true });
+    expect(res.structuredContent).toMatchObject({ bucket: 'b', prefix: 'photos/', recursive: true });
+    expect((res.structuredContent as { objects: unknown[] }).objects).toHaveLength(2);
+    expect((await listObjects({ bucket: 'empty' })).structuredContent).toEqual({ bucket: 'empty', prefix: '', recursive: false, objects: [] });
+  });
+
   it('stats an object with metadata', async () => {
     expect(JSON.parse(textOf(await statObject({ bucket: 'b', key: 'a.log' })))).toEqual({
       key: 'a.log', bucket: 'b', size: '4 B', size_bytes: 4, created: '2023-11-14T22:13:20.000Z', expires: 'none', metadata: { owner: 'me' },

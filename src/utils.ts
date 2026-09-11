@@ -21,6 +21,14 @@ export function ok(data: unknown): McpTextResponse {
   return { content: [{ type: 'text', text }] };
 }
 
+/**
+ * A text response that also carries `structuredContent` — for tools that
+ * declare an outputSchema (clients validate it) and for MCP Apps views.
+ */
+export function okStructured(text: string, structuredContent: Record<string, unknown>): McpTextResponse {
+  return { ...ok(text), structuredContent };
+}
+
 // ---------------------------------------------------------------------------
 // Secrets redaction — strip access grants, API keys, and long base58 tokens
 // from error messages before they reach the LLM.

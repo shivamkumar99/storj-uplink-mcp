@@ -43,6 +43,13 @@ export interface ToolDefinition<S extends ZodRawShape> {
   annotations: ToolAnnotations;
   /** Zod object schema describing the tool's input. */
   schema: z.ZodObject<S>;
+  /**
+   * Optional schema for `structuredContent`.  When set, every successful result
+   * MUST include conforming structuredContent (the SDK validates it).
+   */
+  outputSchema?: ZodRawShape;
+  /** Optional MCP Apps view (`ui://` resource) hosts may render for this tool's results. */
+  ui?: { resourceUri: string };
   handler: (args: z.infer<z.ZodObject<S>>) => Promise<McpTextResponse>;
 }
 
@@ -56,6 +63,8 @@ export interface Tool {
   description: string;
   annotations: ToolAnnotations;
   schema: z.ZodObject<ZodRawShape>;
+  outputSchema?: ZodRawShape;
+  ui?: { resourceUri: string };
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   handler: (args: any) => Promise<McpTextResponse>;
 }
@@ -81,7 +90,13 @@ export function registerTools(server: McpServer, tools: readonly Tool[]): void {
 
     server.registerTool(
       tool.name,
-      { description: tool.description, annotations: tool.annotations, inputSchema: tool.schema.shape },
+      {
+        description: tool.description,
+        annotations: tool.annotations,
+        inputSchema: tool.schema.shape,
+        ...(tool.outputSchema ? { outputSchema: tool.outputSchema } : {}),
+        ...(tool.ui ? { _meta: { ui: { resourceUri: tool.ui.resourceUri } } } : {}),
+      },
       (args, extra) =>
         runWithRequestContext(
           {

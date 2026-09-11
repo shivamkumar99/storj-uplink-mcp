@@ -3,6 +3,7 @@ import { defineConfig } from 'vitest/config';
 export default defineConfig({
   test: {
     include: ['test/**/*.test.ts'],
+    globalSetup: ['./test/global-setup.mjs'],
     // Quiet the native addon's INFO banner when utils.ts loads storj-uplink-nodejs
     env: { UPLINK_LOG_LEVEL: 'error' },
     coverage: {

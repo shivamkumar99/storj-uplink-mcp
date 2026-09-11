@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Storj object browser</title>
+<style>
+  :root { color-scheme: light dark; --fg: #1f2328; --muted: #656d76; --bg: #fff; --line: #d0d7de; --row: #f6f8fa; --accent: #0969da; }
+  @media (prefers-color-scheme: dark) { :root { --fg: #e6edf3; --muted: #8b949e; --bg: #0d1117; --line: #30363d; --row: #161b22; --accent: #58a6ff; } }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 12px; font: 13px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; color: var(--fg); background: var(--bg); }
+  header { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; }
+  #crumb { font-weight: 600; word-break: break-all; }
+  #crumb span { color: var(--muted); font-weight: 400; }
+  button, input { font: inherit; color: inherit; background: var(--row); border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; }
+  button { cursor: pointer; } button:disabled { opacity: .5; cursor: default; }
+  input { flex: 1; min-width: 160px; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  th { cursor: pointer; user-select: none; color: var(--muted); font-weight: 600; }
+  th.sorted::after { content: " ▾"; } th.sorted.asc::after { content: " ▴"; }
+  td.key { white-space: normal; word-break: break-all; }
+  tr.dir td.key { color: var(--accent); cursor: pointer; }
+  tr.file td.key { cursor: pointer; }
+  tr:hover td { background: var(--row); }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  #count { color: var(--muted); margin-top: 8px; }
+  #preview { display: none; margin-top: 12px; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+  #preview-head { display: flex; justify-content: space-between; align-items: center; padding: 6px 8px; background: var(--row); font-weight: 600; word-break: break-all; }
+  #preview-body { margin: 0; padding: 8px; max-height: 320px; overflow: auto; font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre; }
+  #status { color: var(--muted); }
+</style>
+</head>
+<body>
+  <header>
+    <button id="up" title="Go to parent prefix" disabled>↑ Up</button>
+    <div id="crumb">Loading…</div>
+    <input id="filter" type="search" placeholder="Filter by name…" aria-label="Filter objects" />
+    <span id="status"></span>
+  </header>
+  <table>
+    <thead><tr>
+      <th data-sort="key" class="sorted asc">Name</th>
+      <th data-sort="size_bytes" style="text-align:right">Size</th>
+      <th data-sort="created">Created</th>
+    </tr></thead>
+    <tbody id="rows"></tbody>
+  </table>
+  <div id="count"></div>
+  <section id="preview" aria-live="polite">
+    <div id="preview-head"><span id="preview-title"></span><button id="preview-close">✕</button></div>
+    <pre id="preview-body"></pre>
+  </section>
+  <!-- __APP_SCRIPT__ -->
+</body>
+</html>
