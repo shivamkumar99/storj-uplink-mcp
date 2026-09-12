@@ -51,3 +51,30 @@ test/                 mirrors src/ one-to-one (test/core, test/lib, …)
   Nothing else changes.
 - **Adding a feature**: create the folder with the files above, then add one
   import and one spread to `server.ts`.
+
+## Security
+
+The server moves files between the local disk and Storj, so it necessarily
+opens paths that arrive as tool arguments. Every such path passes one gate
+before any filesystem call:
+
+- `lib/paths.ts` — `validateFilePath()` rejects `..` traversal, sensitive
+  directories (`.ssh`, `.aws`, `.git`, …), secret-bearing filenames (`.env`,
+  `.netrc`, …) and operating-system directories; `resolveWithinDir()` confines
+  keys from a bucket to the chosen destination folder (Zip-Slip).
+- `features/upload/directory.ts` never follows symlinks and caps the file
+  count; `features/download/prefix.ts` caps the object count.
+- `lib/sanitize.ts` neutralises prompt-injection tags in anything read from a
+  bucket (keys, metadata, content) before it reaches the model, and
+  `lib/response.ts` redacts access grants and secrets from error text.
+- `core/audit.ts` logs every call to stderr with the request id and its
+  non-sensitive arguments.
+
+Static analysis flags the filesystem calls in `transfer/sources.ts`,
+`transfer/sinks.ts`, `features/upload/directory.ts` and `core/config.ts` as
+"dynamically constructed paths". They are the product's purpose; each site
+carries an `eslint-disable-next-line security/...` comment naming the guard
+that covers it, and `eslint-plugin-security` runs in `npm run lint` so an
+unguarded call cannot be added silently. Tests and build scripts are excluded
+from that analysis (`.codacy.yml`) because they write to per-test temp
+directories and run at build time respectively.

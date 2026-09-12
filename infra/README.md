@@ -115,6 +115,18 @@ Scan the image before shipping it:
 docker scout cves storj-uplink-mcp:local
 ```
 
+## Updating the pinned apt packages
+
+The build stage pins `make`, `curl` and `ca-certificates` to exact Debian
+versions. After a Debian point release the build fails with
+`Version '…' was not found`; look up the current versions and update the
+three pins in `infra/Dockerfile`:
+
+```bash
+docker run --rm --platform linux/amd64 node:22-bookworm-slim sh -c \
+  'apt-get update -qq >/dev/null; apt-cache policy make curl ca-certificates | grep -E "^[a-z]|Candidate"'
+```
+
 ## Updating the base images
 
 The `FROM` lines pin a digest. To move to a newer patch release:

@@ -14,7 +14,7 @@ import { parse, serialize } from 'parse5';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const PLACEHOLDER = '__APP_SCRIPT__';
-const HTML_NS = 'http://www.w3.org/1999/xhtml';
+const SCRIPT_ELEMENT_NAMESPACE = 'http://www.w3.org/1999/xhtml';
 
 const VIEWS = [
   { entry: 'ui/browser/browser.ts', template: 'ui/browser/browser.html', out: 'dist/ui/browser.html' },
@@ -43,7 +43,7 @@ async function bundle(entry) {
 
 /** Build a <script type="module"> element node carrying the bundle as its text. */
 function scriptNode(parent, code) {
-  const script = { nodeName: 'script', tagName: 'script', namespaceURI: HTML_NS, attrs: [{ name: 'type', value: 'module' }], childNodes: [], parentNode: parent };
+  const script = { nodeName: 'script', tagName: 'script', namespaceURI: SCRIPT_ELEMENT_NAMESPACE, attrs: [{ name: 'type', value: 'module' }], childNodes: [], parentNode: parent };
   script.childNodes.push({ nodeName: '#text', value: code, parentNode: script });
   return script;
 }
@@ -51,11 +51,13 @@ function scriptNode(parent, code) {
 export async function buildUi() {
   mkdirSync(path.join(root, 'dist', 'ui'), { recursive: true });
   for (const view of VIEWS) {
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- build-time script; paths come from the VIEWS table above, not from input
     const document = parse(readFileSync(path.join(root, view.template), 'utf8'));
     const slot = findPlaceholder(document);
     if (!slot) throw new Error(`${view.template}: missing <!-- ${PLACEHOLDER} --> placeholder`);
     const code = await bundle(path.join(root, view.entry));
     slot.parent.childNodes.splice(slot.parent.childNodes.indexOf(slot.node), 1, scriptNode(slot.parent, code));
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- build-time script; output path comes from the VIEWS table above
     writeFileSync(path.join(root, view.out), serialize(document));
   }
   return VIEWS.map((v) => v.out);

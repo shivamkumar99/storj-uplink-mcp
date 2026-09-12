@@ -41,6 +41,7 @@ for (const p of [prebuiltNode, buildNode]) {
   }
 }
 
+// eslint-disable-next-line security/detect-non-literal-fs-filename -- both paths are fixed locations inside the dependency's folder, validated above to stay within it
 if (existsSync(prebuiltNode) || existsSync(buildNode)) {
   console.log(`[storj-mcp] Native module already present for ${platformStr} — OK`);
   process.exit(0);
@@ -59,6 +60,7 @@ if (!normalizedMakefile.startsWith(normalizedRoot)) {
   process.exit(1);
 }
 
+// eslint-disable-next-line security/detect-non-literal-fs-filename -- fixed location inside the dependency's folder
 if (!existsSync(makefile)) {
   console.error('[storj-mcp] ERROR: Makefile not found in storj-uplink-nodejs.');
   console.error('[storj-mcp] Please reinstall: npm install storj-uplink-nodejs');

@@ -34,12 +34,15 @@ ENV UPLINK_INSTALL=prebuilt \
     NPM_CONFIG_FUND=false \
     NPM_CONFIG_AUDIT=false
 
-# hadolint ignore=DL3008
-# (apt versions are not pinned: Debian point releases drop superseded package
-#  versions from the archive, which would break the build; the base image is
-#  pinned by digest instead, which fixes the package index it starts from.)
+# Build-stage tools, version-pinned (hadolint DL3008). These are the bookworm
+# versions current for the digest-pinned base image; when Debian publishes a
+# point release the old versions leave the archive and this step fails with
+# "Version '…' was not found" — refresh the three pins then (see infra/README.md).
 RUN apt-get update \
- && apt-get install -y --no-install-recommends make curl ca-certificates \
+ && apt-get install -y --no-install-recommends \
+      make=4.3-4.1 \
+      curl=7.88.1-10+deb12u15 \
+      ca-certificates=20230311+deb12u1 \
  && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
