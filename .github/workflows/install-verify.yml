@@ -17,6 +17,9 @@ on:
     # Every Monday at 08:00 UTC
     - cron: '0 8 * * 1'
 
+permissions:
+  contents: read
+
 env:
   NODE_VERSION: '20'
 
@@ -32,7 +35,7 @@ jobs:
 
     steps:
       - name: Setup Node.js ${{ matrix.node }}
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: ${{ matrix.node }}
 
@@ -43,14 +46,18 @@ jobs:
           INPUT_VERSION: ${{ github.event.inputs.version }}
         run: |
           if [[ -n "$INPUT_VERSION" ]]; then
-            echo "spec=storj-uplink-mcp@$INPUT_VERSION" >> $GITHUB_OUTPUT
+            echo "spec=storj-uplink-mcp@$INPUT_VERSION" >> "$GITHUB_OUTPUT"
           else
-            echo "spec=storj-uplink-mcp@latest" >> $GITHUB_OUTPUT
+            echo "spec=storj-uplink-mcp@latest" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Install storj-uplink-mcp globally
+      # Installing the published package from npm is what this workflow tests,
+      # so an unlocked install is intended here.
+      - name: Install storj-uplink-mcp globally # zizmor: ignore[adhoc-packages]
         shell: bash
-        run: npm install -g ${{ steps.pkg.outputs.spec }}
+        env:
+          SPEC: ${{ steps.pkg.outputs.spec }}
+        run: npm install -g "$SPEC"
 
       - name: Verify binary — storj-uplink-mcp
         shell: bash
@@ -111,7 +118,14 @@ jobs:
       - name: Summary
         if: always()
         shell: bash
+        env:
+          OS: ${{ matrix.os }}
+          NODE: ${{ matrix.node }}
+          SPEC: ${{ steps.pkg.outputs.spec }}
+          STATUS: ${{ job.status }}
         run: |
-          echo "## Install Test: ${{ matrix.os }} / Node ${{ matrix.node }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Package:** ${{ steps.pkg.outputs.spec }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Status:** ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
+          {
+            echo "## Install Test: $OS / Node $NODE"
+            echo "- **Package:** $SPEC"
+            echo "- **Status:** $STATUS"
+          } >> "$GITHUB_STEP_SUMMARY"

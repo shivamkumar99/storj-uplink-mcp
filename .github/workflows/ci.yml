@@ -1,8 +1,15 @@
 # ==============================================================================
-# CI Pipeline — Build, type-check, audit
+# CI Pipeline — Build, type-check, audit, workflow lint
 # ==============================================================================
 # Triggers: Push to main, all PRs
-# Purpose: Fast feedback on build, types, and dependency security
+# Purpose: Fast feedback on build, types, dependency security and the
+#          workflows themselves (actionlint + zizmor)
+#
+# Conventions (enforced by the workflow-lint job):
+#   • every action is pinned to a commit SHA, with the version in a comment
+#   • the token is read-only unless a job says otherwise
+#   • checkout never persists credentials
+#   • expressions never go straight into `run:` — they are passed via `env:`
 # ==============================================================================
 
 name: CI
@@ -13,6 +20,9 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
@@ -21,6 +31,26 @@ env:
   NODE_VERSION_DEFAULT: '20'
 
 jobs:
+  # ============================================================================
+  # Workflow lint — syntax/expressions/shell (actionlint) + security (zizmor)
+  # ============================================================================
+  workflow-lint:
+    name: Workflow Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: actionlint
+        uses: docker://rhysd/actionlint@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667 # 1.7.12
+
+      - name: zizmor
+        uses: zizmorcore/zizmor-action@cc914d7f3750a2d13d75c7f184a1060aa0e9d482 # v0.6.4
+        with:
+          advanced-security: false   # plain output; fail the job on any finding
+
   # ============================================================================
   # TypeScript Build & Type Check (matrix)
   # ============================================================================
@@ -34,10 +64,12 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Setup Node.js ${{ matrix.node }}
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: ${{ matrix.node }}
           cache: 'npm'
@@ -78,10 +110,12 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Setup Node.js
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: ${{ env.NODE_VERSION_DEFAULT }}
           cache: 'npm'
@@ -102,10 +136,12 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Setup Node.js
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: ${{ env.NODE_VERSION_DEFAULT }}
           cache: 'npm'
