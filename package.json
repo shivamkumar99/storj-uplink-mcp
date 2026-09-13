@@ -78,7 +78,15 @@
     "llm",
     "upload",
     "download",
-    "file-sharing"
+    "file-sharing",
+    "mcp-server",
+    "model-context-protocol-server",
+    "claude-desktop",
+    "ai-agent",
+    "decentralized-storage",
+    "storj-uplink",
+    "storj-uplink-nodejs",
+    "file-management"
   ],
   "license": "MIT",
   "engines": {

@@ -7,11 +7,28 @@
 [![Node.js](https://img.shields.io/node/v/storj-uplink-mcp.svg)](https://nodejs.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 
-**MCP server for [Storj](https://storj.io) decentralized storage** — upload, download, list, share, and manage files on Storj using natural language from Claude Desktop, Cursor, Windsurf, VS Code Copilot, and any MCP-compatible AI client.
+**storj-uplink-mcp** is a [Model Context Protocol (MCP)](https://modelcontextprotocol.io) server for [Storj](https://storj.io) decentralized cloud storage. It lets AI assistants such as Claude Desktop, Cursor, Windsurf and VS Code Copilot upload, download, list, search, share and manage files on Storj using natural language, through 28 tools built on the [storj-uplink-nodejs](https://github.com/shivamkumar99/storj-uplink-nodejs) native binding.
 
 > *"Upload this file to my photos bucket"*  
 > *"List all objects in my backup bucket"*  
 > *"Generate a share link for report.pdf"*
+
+## Table of Contents
+
+- [Features](#features)
+- [Quick Start](#quick-start)
+- [Alternative: Environment Variables](#alternative-environment-variables)
+- [Managing Credentials](#managing-credentials)
+- [Available Tools](#available-tools)
+- [Running in Docker](#running-in-docker)
+- [Development](#development)
+- [Uninstalling](#uninstalling)
+- [FAQ](#faq)
+- [Why Storj?](#why-storj)
+- [Requirements](#requirements)
+- [Related Projects](#related-projects)
+- [Contributing](#contributing)
+- [License](#license)
 
 ## Features
 
@@ -201,14 +218,14 @@ Optional display setting, independent of credentials:
 
 ## Managing Credentials
 
-#### Credential commands (global install)
+### Credential commands (global install)
 ```bash
 storj-uplink-mcp-setup            # Setup/reconfigure
 storj-uplink-mcp-setup --status   # Check credential source
 storj-uplink-mcp-setup --reset    # Delete saved config
 ```
 
-#### Credential commands (local install)
+### Credential commands (local install)
 ```bash
 npx storj-uplink-mcp-setup            # Setup/reconfigure
 npx storj-uplink-mcp-setup --status   # Check credential source
@@ -352,6 +369,32 @@ npm list -g storj-uplink-mcp
 
 ---
 
+## FAQ
+
+### What is storj-uplink-mcp?
+
+An MCP server that connects AI assistants to Storj object storage. Once configured, you can ask Claude Desktop, Cursor, Windsurf or VS Code Copilot to manage buckets and files on Storj in plain language; the assistant calls the server's tools on your behalf.
+
+### Which AI clients does it work with?
+
+Any client that implements the Model Context Protocol over stdio: Claude Desktop, Claude Code, Cursor, Windsurf, VS Code Copilot and others. Clients that support MCP Apps also render an interactive file browser for bucket and object listings.
+
+### Where are my Storj credentials stored?
+
+Either in environment variables or in `~/.storj-mcp/config.json`, encrypted with AES-256-GCM using a machine-specific key and readable only by your user. Credentials never leave your machine and are redacted from every error message and log line.
+
+### Can it read large files without downloading them?
+
+Yes. `peek_object_head`, `peek_object_tail` and `grep_object` fetch only the bytes they need, so a multi-gigabyte log can be inspected without pulling it into the assistant's context.
+
+### Does it work with S3 tools?
+
+Yes. `get_s3_credentials` issues S3-compatible credentials scoped to one bucket or prefix, with least-privilege permissions and an optional expiry, for use with rclone, the AWS CLI or any S3 SDK.
+
+### Is there a way to test it without a Storj account?
+
+Yes. [infra/dev](infra/dev/README.md) starts a private Storj network in Docker (built on storj-up, the tool Storj uses for its own testing) and runs the full tool suite against it.
+
 ## Why Storj?
 
 [Storj](https://storj.io) is a decentralized cloud storage platform that provides:
@@ -367,6 +410,12 @@ npm list -g storj-uplink-mcp
 
 - **Node.js 18+**
 - A [Storj account](https://storj.io) with an API key or Access Grant (free tier available — 25 GB storage, 25 GB bandwidth/month)
+
+## Related Projects
+
+- [storj-uplink-nodejs](https://github.com/shivamkumar99/storj-uplink-nodejs) — the Node.js native binding for Storj's uplink-c library that this server is built on
+- [Model Context Protocol](https://modelcontextprotocol.io) — the open protocol that connects AI assistants to tools and data
+- [Storj documentation](https://docs.storj.io) — buckets, access grants, S3 compatibility and the Storj network
 
 ## Contributing
 
