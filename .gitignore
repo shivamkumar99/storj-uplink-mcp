@@ -11,3 +11,4 @@ infra/dev/.env
 infra/dev/exchange/*
 !infra/dev/exchange/.gitkeep
 infra/dev/.history/
+infra/dev/pkg/

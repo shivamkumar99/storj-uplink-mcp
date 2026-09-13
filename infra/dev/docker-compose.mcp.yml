@@ -9,11 +9,13 @@
 
 services:
   mcp:
-    image: storj-uplink-mcp:local
+    # Override to test another build, e.g. a library branch compiled from source:
+    #   MCP_IMAGE=storj-uplink-mcp:lib-dev MCP_PLATFORM=linux/arm64 npm run test:e2e
+    image: ${MCP_IMAGE:-storj-uplink-mcp:local}
     build:
       context: ../..
       dockerfile: infra/Dockerfile
-    platform: linux/amd64
+    platform: ${MCP_PLATFORM:-linux/amd64}
     env_file:
       - .env                       # written by storj-local.sh credentials
     depends_on:

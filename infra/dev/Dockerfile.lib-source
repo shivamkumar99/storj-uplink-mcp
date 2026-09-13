@@ -1,0 +1,57 @@
+# syntax=docker/dockerfile:1.7
+# ---------------------------------------------------------------------------
+# DEV-ONLY variant of infra/Dockerfile: builds the MCP against a LOCAL, not yet
+# published, storj-uplink-nodejs tarball, compiling libuplink + the addon from
+# source inside the image (UPLINK_INSTALL=source).  Used to validate a library
+# branch end-to-end against the local storj-up network before it is released.
+#
+#   npm pack ../storj-uplink-nodejs --pack-destination infra/dev/pkg
+#   docker build -f infra/dev/Dockerfile.lib-source \
+#     --build-arg LIB_TARBALL=infra/dev/pkg/storj-uplink-nodejs-1.0.4.tgz \
+#     -t storj-uplink-mcp:lib-dev .
+#
+# Builds natively for the host architecture (no prebuilt needed), so on
+# Apple Silicon this is a linux/arm64 image.
+# ---------------------------------------------------------------------------
+ARG LIB_TARBALL=infra/dev/pkg/storj-uplink-nodejs-1.0.4.tgz
+
+FROM golang:1.25-bookworm AS go
+
+FROM node:22-bookworm-slim AS build
+COPY --from=go /usr/local/go /usr/local/go
+ENV PATH="/usr/local/go/bin:${PATH}" \
+    UPLINK_INSTALL=source \
+    UPLINK_LOG_LEVEL=error \
+    NPM_CONFIG_UPDATE_NOTIFIER=false NPM_CONFIG_FUND=false NPM_CONFIG_AUDIT=false
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends make curl ca-certificates git python3 build-essential \
+ && rm -rf /var/lib/apt/lists/* \
+ && npm install -g node-gyp
+WORKDIR /app
+COPY package.json package-lock.json ./
+COPY scripts ./scripts
+# --ignore-scripts: do not build the *published* library here; the local tarball below replaces it.
+RUN --mount=type=cache,target=/root/.npm npm ci --ignore-scripts
+# Replace the published library with the local tarball (compiled from source here;
+# its install script runs make install with UPLINK_INSTALL=source).
+ARG LIB_TARBALL
+COPY ${LIB_TARBALL} /tmp/storj-uplink-nodejs.tgz
+# --save so the image's lockfile references the tarball; otherwise npm prune below
+# would treat it as extraneous and reinstall the published version.
+RUN --mount=type=cache,target=/root/.npm npm install /tmp/storj-uplink-nodejs.tgz --save \
+ && node -e "const l=require('storj-uplink-nodejs');console.log('library',l.VERSION,JSON.stringify(l.uplinkCVersion()))"
+COPY tsconfig.json ./
+COPY src ./src
+COPY ui ./ui
+RUN npm run build \
+ && npm prune --omit=dev --ignore-scripts \
+ && rm -rf src ui scripts tsconfig.json
+
+FROM gcr.io/distroless/nodejs22-debian12:nonroot
+ENV NODE_ENV=production UPLINK_LOG_LEVEL=error HOME=/home/nonroot
+WORKDIR /app
+COPY --from=build --chown=nonroot:nonroot /app/package.json ./package.json
+COPY --from=build --chown=nonroot:nonroot /app/node_modules ./node_modules
+COPY --from=build --chown=nonroot:nonroot /app/dist ./dist
+USER nonroot:nonroot
+CMD ["dist/index.js"]

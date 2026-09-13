@@ -6,6 +6,7 @@
 !scripts/
 !src/
 !ui/
+!infra/dev/pkg/*.tgz
 # never send these even if a rule above matched a parent
 **/node_modules
 **/.DS_Store
