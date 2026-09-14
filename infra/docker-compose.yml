@@ -28,7 +28,7 @@ services:
       - ALL
     security_opt:
       - no-new-privileges:true
-    user: "65532:65532"            # nonroot (already the image default)
+    user: "1000:1000"              # node (already the image default)
     pids_limit: 128
     mem_limit: 512m
     cpus: "1.0"

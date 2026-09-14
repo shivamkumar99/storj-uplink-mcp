@@ -81,9 +81,10 @@ read-only apart from `/tmp`. Mount a host folder if you need them, e.g.
 
 | Control | Where |
 |---|---|
+| Both stages are [Docker Hardened Images](https://docs.docker.com/dhi/) (`dhi.io/node`): SBOM and VEX attested, near-zero known CVEs, patched by Docker | `Dockerfile` |
 | Multi-stage build; no compiler, npm, curl or dev dependencies in the final image | `Dockerfile` |
-| Distroless runtime: no shell, no package manager, no setuid binaries | `Dockerfile` |
-| Unprivileged user `nonroot` (uid 65532) | `Dockerfile`, compose `user` |
+| Hardened runtime: no shell, no package manager, non-root by default | `Dockerfile` |
+| Unprivileged user `node` (uid 1000) | `Dockerfile`, compose `user` |
 | Base images pinned by digest | `Dockerfile` |
 | Read-only root filesystem, `noexec` tmpfs for `/tmp` | run flags / compose |
 | All Linux capabilities dropped, `no-new-privileges` | run flags / compose |
@@ -123,7 +124,8 @@ versions. After a Debian point release the build fails with
 three pins in `infra/Dockerfile`:
 
 ```bash
-docker run --rm --platform linux/amd64 node:22-bookworm-slim sh -c \
+# Docker Hardened Images serve their own "+dhiN" package builds; pin those versions.
+docker run --rm --platform linux/amd64 --entrypoint sh dhi.io/node:22-debian13-dev -c \
   'apt-get update -qq >/dev/null; apt-cache policy make curl ca-certificates | grep -E "^[a-z]|Candidate"'
 ```
 
@@ -132,8 +134,8 @@ docker run --rm --platform linux/amd64 node:22-bookworm-slim sh -c \
 The `FROM` lines pin a digest. To move to a newer patch release:
 
 ```bash
-docker buildx imagetools inspect node:22-bookworm-slim | awk '/^Digest:/{print $2}'
-docker buildx imagetools inspect gcr.io/distroless/nodejs22-debian12:nonroot | awk '/^Digest:/{print $2}'
+docker buildx imagetools inspect dhi.io/node:22-debian13-dev | awk '/^Digest:/{print $2}'
+docker buildx imagetools inspect dhi.io/node:22-debian13 | awk '/^Digest:/{print $2}'
 ```
 
 Paste the new digests into `infra/Dockerfile` and rebuild.

@@ -7,10 +7,12 @@
 # infra/README.md for the client configuration.
 #
 # Security properties of this image:
+#   • Both stages use Docker Hardened Images (dhi.io/node): the `-dev` variant
+#     to build (shell + apt, root), the runtime variant to run — no shell, no
+#     package manager, non-root by default, SBOM/VEX-attested, patched by Docker.
 #   • Multi-stage: compilers, npm, curl and dev dependencies never reach the
-#     final image.  The runtime is Google's distroless Node.js image — no
-#     shell, no package manager, no setuid binaries.
-#   • Runs as the unprivileged `nonroot` user (uid 65532).
+#     final image.
+#   • Runs as the unprivileged `node` user (uid 1000), the image default.
 #   • Base images are pinned by digest, not by mutable tag.
 #   • Only dist/, production node_modules and package.json are copied in.
 #   • No credentials are baked in.  Pass STORJ_* variables at run time.
@@ -23,7 +25,7 @@
 # ---------------------------------------------------------------------------
 
 # ---- Stage 1: build --------------------------------------------------------
-FROM --platform=linux/amd64 node:22-bookworm-slim@sha256:83f487e0a63425e5b4d146fb5e5be574bcbe1b7b843d3ebafdd95eaf7767a7e5 AS build
+FROM --platform=linux/amd64 dhi.io/node:22-debian13-dev@sha256:cb4828216aa2d1d964e657bce189277fb927f3049fbf35592a7105034847cec2 AS build
 
 # The native dependency's install step downloads the prebuilt addon with curl
 # via `make install`.  UPLINK_INSTALL=prebuilt forbids a silent fallback to a
@@ -34,16 +36,24 @@ ENV UPLINK_INSTALL=prebuilt \
     NPM_CONFIG_FUND=false \
     NPM_CONFIG_AUDIT=false
 
-# Build-stage tools, version-pinned (hadolint DL3008). These are the bookworm
-# versions current for the digest-pinned base image; when Debian publishes a
-# point release the old versions leave the archive and this step fails with
-# "Version '…' was not found" — refresh the three pins then (see infra/README.md).
+# Build-stage tools, version-pinned (hadolint DL3008): make + curl run the
+# library's prebuilt download, gzip lets tar extract it. Docker Hardened Images
+# rebuild Debian 13 packages with a "+dhiN" suffix and serve only those, so the
+# pins must be the DHI versions (see infra/README.md for how to refresh them).
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
-      make=4.3-4.1 \
-      curl=7.88.1-10+deb12u15 \
-      ca-certificates=20230311+deb12u1 \
+      make=4.4.1-2+dhi1 \
+      curl=8.14.1-2+deb13u5+dhi0 \
+      ca-certificates=20250419+dhi2 \
+      gzip=1.13-1+dhi1 \
  && rm -rf /var/lib/apt/lists/*
+
+# The hardened dev image ships no which(1) and its apt repo has no package for
+# it; storj-uplink-nodejs's Makefile probes tools with `which`, so provide a
+# POSIX shim (build stage only — it never reaches the runtime image).
+RUN mkdir -p /usr/local/bin \
+ && printf '#!/bin/sh\nfor c in "$@"; do command -v "$c" || exit 1; done\n' > /usr/local/bin/which \
+ && chmod +x /usr/local/bin/which
 
 WORKDIR /app
 
@@ -62,21 +72,21 @@ RUN npm run build \
  && rm -rf src ui scripts tsconfig.json
 
 # ---- Stage 2: runtime ------------------------------------------------------
-FROM --platform=linux/amd64 gcr.io/distroless/nodejs22-debian12:nonroot@sha256:13593b7570658e8477de39e2f4a1dd25db2f836d68a0ba771251572d23bb4f8e
+FROM --platform=linux/amd64 dhi.io/node:22-debian13@sha256:fb00a158fa6047167885c65db6b9802cf1f234794e81bb393d683fadaa683500
 
 ENV NODE_ENV=production \
     UPLINK_LOG_LEVEL=error \
-    HOME=/home/nonroot
+    HOME=/home/node
 
 WORKDIR /app
-COPY --from=build --chown=nonroot:nonroot /app/package.json ./package.json
-COPY --from=build --chown=nonroot:nonroot /app/node_modules ./node_modules
-COPY --from=build --chown=nonroot:nonroot /app/dist ./dist
+COPY --from=build --chown=1000:1000 /app/package.json ./package.json
+COPY --from=build --chown=1000:1000 /app/node_modules ./node_modules
+COPY --from=build --chown=1000:1000 /app/dist ./dist
 
-USER nonroot:nonroot
+USER 1000:1000
 
-# Distroless sets ENTRYPOINT to the node binary; only the script goes here.
-CMD ["dist/index.js"]
+# The hardened runtime image has no ENTRYPOINT; `node` is on PATH.
+CMD ["node", "dist/index.js"]
 
 LABEL org.opencontainers.image.title="storj-uplink-mcp" \
       org.opencontainers.image.description="MCP server for Storj decentralized storage (stdio transport)" \

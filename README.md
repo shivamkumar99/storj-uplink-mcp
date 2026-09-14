@@ -44,7 +44,7 @@
 - 📊 **Progress and cancellation** — MCP progress notifications for long operations; client cancellation stops transfers mid-stream
 - 🛡️ **Hardened by default** — path-traversal and Zip-Slip guards, symlink-safe directory walks, prompt-injection sanitising of untrusted keys and content, secret redaction, audit log on stderr
 - 🔐 **Encrypted credentials** — AES-256-GCM encryption with machine-specific key, `chmod 600`
-- 🐳 **Docker** — hardened distroless image and a compose file (see [infra/](infra/))
+- 🐳 **Docker** — image built on [Docker Hardened Images](https://docs.docker.com/dhi/) (non-root, no shell, SBOM-attested) and a hardened compose file (see [infra/](infra/))
 - 🖥️ **Multi-client** — works with Claude Desktop, Cursor, Windsurf, VS Code Copilot, and any MCP client
 - 🌍 **Cross-platform** — macOS, Linux, Windows
 
@@ -304,7 +304,7 @@ Credentials are stored encrypted at `~/.storj-mcp/config.json` using AES-256-GCM
 
 ## Running in Docker
 
-A hardened image (multi-stage, distroless, non-root, pinned base digests) and a compose file with read-only rootfs, dropped capabilities and resource limits live in [infra/](infra/). Build with `npm run docker:build` and point your MCP client at `docker run -i …` as shown in [infra/README.md](infra/README.md).
+A hardened image (multi-stage on Docker Hardened Images, non-root, no shell, pinned base digests) and a compose file with read-only rootfs, dropped capabilities and resource limits live in [infra/](infra/). Build with `npm run docker:build` and point your MCP client at `docker run -i …` as shown in [infra/README.md](infra/README.md).
 
 ---
 

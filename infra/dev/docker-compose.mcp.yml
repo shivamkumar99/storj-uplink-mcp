@@ -30,7 +30,7 @@ services:
       - ALL
     security_opt:
       - no-new-privileges:true
-    user: "65532:65532"
+    user: "1000:1000"
     pids_limit: 128
     mem_limit: 512m
     # Scratch folder for the local-file tools (upload_file, download_file, …).
