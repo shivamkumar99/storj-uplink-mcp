@@ -304,6 +304,12 @@ Credentials are stored encrypted at `~/.storj-mcp/config.json` using AES-256-GCM
 
 ## Running in Docker
 
+Released versions are on Docker Hub as [`shivam995364/storj-uplink-mcp`](https://hub.docker.com/r/shivam995364/storj-uplink-mcp) (linux/amd64, scanned on every build, SBOM and provenance attached):
+
+```bash
+docker pull shivam995364/storj-uplink-mcp:latest
+```
+
 A hardened image (multi-stage on Docker Hardened Images, non-root, no shell, pinned base digests) and a compose file with read-only rootfs, dropped capabilities and resource limits live in [infra/](infra/). Build with `npm run docker:build` and point your MCP client at `docker run -i …` as shown in [infra/README.md](infra/README.md).
 
 ---

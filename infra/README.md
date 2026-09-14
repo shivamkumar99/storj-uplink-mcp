@@ -4,6 +4,23 @@ The server uses the MCP **stdio** transport: the AI client starts the process
 and talks JSON-RPC over stdin/stdout. In Docker that means the client runs
 `docker run -i …` for each session; there is no daemon and no open port.
 
+## Published image
+
+Releases are published to Docker Hub as **`shivam995364/storj-uplink-mcp`**
+by the `Docker` workflow (`.github/workflows/docker.yml`): every push and
+pull request builds the image, lints the Dockerfile, scans it with Trivy
+(HIGH/CRITICAL, fixed-only, blocking) and completes an MCP handshake inside the
+hardened container; a `v*.*.*` tag additionally pushes
+`:<version>`, `:<major>.<minor>`, `:<major>` and `:latest` with SBOM and
+provenance attestations. Images are linux/amd64.
+
+```bash
+docker pull shivam995364/storj-uplink-mcp:latest
+```
+
+Use it in an MCP client exactly like the locally built image below, replacing
+`storj-uplink-mcp:local` with `shivam995364/storj-uplink-mcp:latest`.
+
 ## Build
 
 The native `storj-uplink-nodejs` addon ships a prebuilt binary for linux-x64

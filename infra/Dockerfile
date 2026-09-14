@@ -20,12 +20,13 @@
 #     --security-opt no-new-privileges (see README / compose file).
 #
 # Platform: the storj-uplink-nodejs native addon ships a prebuilt binary for
-# linux-x64 only, so build with --platform linux/amd64 (emulated on Apple
-# Silicon).  On linux-arm64 the addon would have to be compiled from source.
+# linux-x64 only, so build with `--platform linux/amd64` (npm run docker:build
+# does; emulated on Apple Silicon).  The FROM lines deliberately carry no
+# --platform so the same file works for buildx multi-platform builds later.
 # ---------------------------------------------------------------------------
 
 # ---- Stage 1: build --------------------------------------------------------
-FROM --platform=linux/amd64 dhi.io/node:22-debian13-dev@sha256:cb4828216aa2d1d964e657bce189277fb927f3049fbf35592a7105034847cec2 AS build
+FROM dhi.io/node:22-debian13-dev@sha256:cb4828216aa2d1d964e657bce189277fb927f3049fbf35592a7105034847cec2 AS build
 
 # The native dependency's install step downloads the prebuilt addon with curl
 # via `make install`.  UPLINK_INSTALL=prebuilt forbids a silent fallback to a
@@ -51,6 +52,7 @@ RUN apt-get update \
 # The hardened dev image ships no which(1) and its apt repo has no package for
 # it; storj-uplink-nodejs's Makefile probes tools with `which`, so provide a
 # POSIX shim (build stage only — it never reaches the runtime image).
+# hadolint ignore=SC2016
 RUN mkdir -p /usr/local/bin \
  && printf '#!/bin/sh\nfor c in "$@"; do command -v "$c" || exit 1; done\n' > /usr/local/bin/which \
  && chmod +x /usr/local/bin/which
@@ -72,7 +74,7 @@ RUN npm run build \
  && rm -rf src ui scripts tsconfig.json
 
 # ---- Stage 2: runtime ------------------------------------------------------
-FROM --platform=linux/amd64 dhi.io/node:22-debian13@sha256:fb00a158fa6047167885c65db6b9802cf1f234794e81bb393d683fadaa683500
+FROM dhi.io/node:22-debian13@sha256:fb00a158fa6047167885c65db6b9802cf1f234794e81bb393d683fadaa683500
 
 ENV NODE_ENV=production \
     UPLINK_LOG_LEVEL=error \
