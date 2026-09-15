@@ -7,6 +7,9 @@
 // node whose text is the bundle.  esbuild already escapes "</script" inside
 // JS string literals; the check below guarantees it for the whole bundle.
 import { build } from 'esbuild';
+import { createRequire } from 'node:module';
+
+const PACKAGE_VERSION = createRequire(import.meta.url)('../package.json').version;
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -35,6 +38,9 @@ async function bundle(entry) {
   const result = await build({
     entryPoints: [entry], bundle: true, format: 'esm', platform: 'browser',
     target: ['es2022'], minify: true, write: false, logLevel: 'silent',
+    // The UI cannot read package.json at runtime, so the version is baked in
+    // here rather than hardcoded in the source, where it would go stale.
+    define: { __APP_VERSION__: JSON.stringify(PACKAGE_VERSION) },
   });
   const code = result.outputFiles[0].text;
   if (/<\/script/i.test(code)) throw new Error(`${entry}: bundle contains "</script", which would end the inline tag early`);

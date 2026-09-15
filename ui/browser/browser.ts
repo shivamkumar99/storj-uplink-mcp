@@ -20,7 +20,9 @@ type Value = string | number | undefined;
 const BUCKET_COLUMNS: Column[] = [{ key: 'name', label: 'Bucket' }, { key: 'created', label: 'Created' }];
 const OBJECT_COLUMNS: Column[] = [{ key: 'key', label: 'Name' }, { key: 'size_bytes', label: 'Size', numeric: true }, { key: 'created', label: 'Created' }];
 
-const app = new App({ name: 'Storj browser', version: '1.0.1' });
+declare const __APP_VERSION__: string;
+
+const app = new App({ name: 'Storj browser', version: __APP_VERSION__ });
 
 const el = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
 const head = el<HTMLTableSectionElement>('head');
