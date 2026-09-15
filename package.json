@@ -43,7 +43,7 @@
     "@modelcontextprotocol/sdk": "^1.30.0",
     "picomatch": "^4.0.7",
     "storj-uplink-nodejs": "^1.0.6",
-    "zod": "^3.25.0"
+    "zod": "^4.5.4"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
