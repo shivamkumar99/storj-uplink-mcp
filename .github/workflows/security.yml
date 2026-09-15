@@ -1,0 +1,345 @@
+# ==============================================================================
+# Security Pipeline — SAST, dependencies, secrets, licences, supply chain
+# ==============================================================================
+# Triggers: push to main, PRs to main, weekly schedule (drift and newly
+#           disclosed CVEs in code that has not changed).
+#
+# What runs where:
+#   ci.yml       npm audit (fast, blocking), ESLint incl. eslint-plugin-security
+#   docker.yml   Trivy scan of the built image (blocking on fixable HIGH/CRITICAL)
+#   security.yml everything in this file — the deeper, slower analysis
+#
+# Every job needs only the built-in GITHUB_TOKEN; no third-party account or
+# secret is required, so forks and PRs get the same coverage.
+#
+# Findings land in the repository's Security tab (code scanning alerts) as
+# SARIF, so they are reviewable and dismissible in one place rather than being
+# buried in job logs.
+# ==============================================================================
+
+name: Security
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '0 3 * * 1'   # Mondays 03:00 UTC
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION_DEFAULT: '20'
+
+jobs:
+  # ============================================================================
+  # CodeQL — GitHub's own SAST, security-extended query pack
+  # ============================================================================
+  codeql:
+    name: CodeQL
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@b96794f015dfd88f77b49b1c93e0fa7110f94c63 # v4.38.0
+        with:
+          languages: javascript-typescript
+          queries: +security-extended,security-and-quality
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION_DEFAULT }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      # Analyse the sources the server actually ships, compiled the way it ships.
+      - name: Build
+        run: npm run build
+
+      - name: Analyze
+        uses: github/codeql-action/analyze@b96794f015dfd88f77b49b1c93e0fa7110f94c63 # v4.38.0
+        with:
+          category: /language:javascript-typescript
+
+  # ============================================================================
+  # Dependency review — blocks a PR that introduces a vulnerable or
+  # badly-licensed dependency, before it is merged
+  # ============================================================================
+  dependency-review:
+    name: Dependency Review
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Requires the repository's dependency graph (Settings → Advanced Security
+      # → Dependency graph). Until that is on, the action reports "not supported"
+      # and this stays advisory; drop continue-on-error to make it blocking.
+      - name: Review dependency changes
+        continue-on-error: true
+        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          fail-on-severity: high
+          allow-licenses: MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, 0BSD, Unlicense, CC0-1.0, BlueOak-1.0.0, Python-2.0
+          comment-summary-in-pr: on-failure
+
+  # ============================================================================
+  # Semgrep — pattern-based SAST (Node, TypeScript, OWASP Top Ten)
+  # ============================================================================
+  semgrep:
+    name: Semgrep SAST
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      security-events: write
+    container:
+      # semgrep/semgrep, digest-pinned
+      image: semgrep/semgrep@sha256:34ab619bf1391a24bfda3f05debd0d8a6ce3093c2d5f9d39cfc00f83c1397823
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Run Semgrep
+        run: |
+          semgrep scan \
+            --config=p/typescript \
+            --config=p/nodejs \
+            --config=p/security-audit \
+            --config=p/owasp-top-ten \
+            --sarif --output=semgrep.sarif \
+            --no-error
+
+      - name: Upload SARIF
+        if: always() && hashFiles('semgrep.sarif') != ''
+        uses: github/codeql-action/upload-sarif@b96794f015dfd88f77b49b1c93e0fa7110f94c63 # v4.38.0
+        with:
+          sarif_file: semgrep.sarif
+          category: semgrep
+
+  # ============================================================================
+  # Secrets — a credential in the history is a credential to rotate
+  # ============================================================================
+  secrets-scan:
+    name: Secret Detection
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout (full history)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Gitleaks
+        uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+
+      - name: TruffleHog (verified findings only)
+        uses: trufflesecurity/trufflehog@363923b901c911a9164f50b6c423f47c15372b1c # v3.97.4
+        with:
+          extra_args: --only-verified
+
+  # ============================================================================
+  # Licences — what ships inside the published package
+  # ============================================================================
+  licenses:
+    name: License Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION_DEFAULT }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Production dependency licences
+        run: npx license-checker --production --summary --onlyAllow "MIT;Apache-2.0;BSD-2-Clause;BSD-3-Clause;ISC;0BSD;Unlicense;CC0-1.0;BlueOak-1.0.0;Python-2.0"
+
+  # ============================================================================
+  # Supply chain — dependency CVEs from the lockfile, and misconfiguration in
+  # the Dockerfile and compose files (the image itself is scanned in docker.yml)
+  # ============================================================================
+  supply-chain:
+    name: Supply Chain Scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Trivy — dependencies (lockfile)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: fs
+          scanners: vuln,secret
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          format: sarif
+          output: trivy-fs.sarif
+          exit-code: '0'   # reported as alerts; npm audit in ci.yml is the blocking gate
+
+      - name: Upload dependency findings
+        if: always() && hashFiles('trivy-fs.sarif') != ''
+        uses: github/codeql-action/upload-sarif@b96794f015dfd88f77b49b1c93e0fa7110f94c63 # v4.38.0
+        with:
+          sarif_file: trivy-fs.sarif
+          category: trivy-fs
+
+      - name: Trivy — Dockerfile and compose misconfiguration
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: config
+          scan-ref: infra
+          severity: HIGH,CRITICAL
+          format: sarif
+          output: trivy-config.sarif
+          exit-code: '0'
+
+      - name: Upload misconfiguration findings
+        if: always() && hashFiles('trivy-config.sarif') != ''
+        uses: github/codeql-action/upload-sarif@b96794f015dfd88f77b49b1c93e0fa7110f94c63 # v4.38.0
+        with:
+          sarif_file: trivy-config.sarif
+          category: trivy-config
+
+  # ============================================================================
+  # SBOM — what is in the package, in a form auditors and scanners can read
+  # ============================================================================
+  sbom:
+    name: SBOM
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION_DEFAULT }}
+          cache: 'npm'
+
+      - name: Install production dependencies
+        run: npm ci --ignore-scripts --omit=dev
+
+      - name: Generate CycloneDX SBOM
+        run: npx --yes @cyclonedx/cyclonedx-npm@latest --omit dev --output-file sbom.cdx.json
+
+      - name: Upload SBOM
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: sbom-cyclonedx
+          path: sbom.cdx.json
+          retention-days: 90
+
+  # ============================================================================
+  # OpenSSF Scorecard — supply-chain posture of this repository itself
+  # ============================================================================
+  scorecard:
+    name: OpenSSF Scorecard
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    if: github.event_name != 'pull_request'
+    permissions:
+      contents: read
+      security-events: write
+      id-token: write        # publish the signed result
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Run analysis
+        uses: ossf/scorecard-action@2d1146689b8cda280b9bc96326124645441f03bc # v2.4.4
+        with:
+          results_file: scorecard.sarif
+          results_format: sarif
+          publish_results: false
+
+      - name: Upload results
+        if: always() && hashFiles('scorecard.sarif') != ''
+        uses: github/codeql-action/upload-sarif@b96794f015dfd88f77b49b1c93e0fa7110f94c63 # v4.38.0
+        with:
+          sarif_file: scorecard.sarif
+          category: scorecard
+
+  # ============================================================================
+  # Aggregate gate
+  # ============================================================================
+  security-success:
+    name: Security Success
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: [codeql, dependency-review, semgrep, secrets-scan, licenses, supply-chain, sbom, scorecard]
+    if: always()
+    steps:
+      - name: Check results
+        env:
+          RESULTS: |
+            codeql=${{ needs.codeql.result }}
+            dependency-review=${{ needs.dependency-review.result }}
+            semgrep=${{ needs.semgrep.result }}
+            secrets-scan=${{ needs.secrets-scan.result }}
+            licenses=${{ needs.licenses.result }}
+            supply-chain=${{ needs.supply-chain.result }}
+            sbom=${{ needs.sbom.result }}
+            scorecard=${{ needs.scorecard.result }}
+        run: |
+          failed=0
+          while IFS='=' read -r job result; do
+            [[ -z "$job" ]] && continue
+            printf '%-20s %s\n' "$job" "$result"
+            # skipped is expected: dependency-review is PR-only, scorecard is not
+            [[ "$result" == "success" || "$result" == "skipped" ]] || failed=1
+          done <<< "$RESULTS"
+          if [[ "$failed" -ne 0 ]]; then
+            echo "One or more security jobs failed"
+            exit 1
+          fi
+          echo "All security checks passed!"
