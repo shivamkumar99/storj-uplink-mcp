@@ -125,7 +125,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        node: ['18', '20', '22']
+        # Vitest 4 bundles rolldown, which imports styleText from node:util —
+        # added in Node 20.12. The runner cannot start on Node 18, so Node 18
+        # support is covered by the build job and by install-verify.yml, which
+        # installs the published package and runs both binaries on 18, 20 and
+        # 22 across Linux, macOS and Windows.
+        node: ['20', '22']
 
     steps:
       - name: Checkout
