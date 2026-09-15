@@ -44,6 +44,7 @@ jobs:
   validate:
     name: Validate Release
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     outputs:
       version: ${{ steps.version.outputs.version }}
       tag: ${{ steps.version.outputs.tag }}
@@ -110,6 +111,7 @@ jobs:
   build:
     name: Build & Package
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     needs: validate
     steps:
       - name: Checkout
@@ -188,6 +190,7 @@ jobs:
   release:
     name: Create GitHub Release
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     needs: [validate, build]
     if: ${{ github.event.inputs.dry_run != 'true' }}
     permissions:

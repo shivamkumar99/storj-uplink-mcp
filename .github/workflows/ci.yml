@@ -1,9 +1,16 @@
 # ==============================================================================
-# CI Pipeline — Build, type-check, audit, workflow lint
+# CI Pipeline — lint, type-check, test, build, audit, package
 # ==============================================================================
 # Triggers: Push to main, all PRs
-# Purpose: Fast feedback on build, types, dependency security and the
-#          workflows themselves (actionlint + zizmor)
+# Purpose: One job per concern, in the usual order — source lint (ESLint, knip),
+#          types, unit tests, build, dependency audit, package contents, and the
+#          workflows themselves (actionlint + zizmor). `ci-success` aggregates
+#          them into the single check branch protection can require.
+#
+# Dependency install: jobs that only read the sources use
+# `npm ci --ignore-scripts`. The test job needs a full `npm ci`, because
+# storj-uplink-nodejs compiles or downloads its native binding in a postinstall
+# script and nine test files import it for real rather than mocking it.
 #
 # Conventions (enforced by the workflow-lint job):
 #   • every action is pinned to a commit SHA, with the version in a comment
@@ -37,6 +44,7 @@ jobs:
   workflow-lint:
     name: Workflow Lint
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -52,11 +60,108 @@ jobs:
           advanced-security: false   # plain output; fail the job on any finding
 
   # ============================================================================
-  # TypeScript Build & Type Check (matrix)
+  # Source lint — ESLint (type-aware, incl. the 200-line file limit) + knip
+  # ============================================================================
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION_DEFAULT }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: ESLint
+        run: npm run lint
+
+      - name: Unused exports and dependencies (knip)
+        run: npm run knip
+
+  # ============================================================================
+  # Type check — server, tests and the browser UI bundle
+  # ============================================================================
+  typecheck:
+    name: Type Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION_DEFAULT }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Type check (server)
+        run: npx tsc --noEmit
+
+      - name: Type check (tests and UI)
+        run: npm run typecheck
+
+  # ============================================================================
+  # Unit tests (matrix) — Vitest over the in-memory MCP transport
+  # ============================================================================
+  test:
+    name: Test (Node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        # Vitest 4 bundles rolldown, which imports styleText from node:util —
+        # added in Node 20.12. The runner cannot start on Node 18, so Node 18
+        # support is covered by the build job and by install-verify.yml, which
+        # installs the published package and runs both binaries on 18, 20 and
+        # 22 across Linux, macOS and Windows.
+        node: ['20', '22']
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup Node.js ${{ matrix.node }}
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ matrix.node }}
+          cache: 'npm'
+
+      # Full install: the native storj-uplink-nodejs binding is required by the
+      # tests that exercise the real module surface.
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Report the native binding in use
+        run: node -e "const l=require('storj-uplink-nodejs');console.log('storj-uplink-nodejs',l.VERSION,'| uplink-c',l.uplinkCVersion().storjUplink)"
+
+      - name: Run tests
+        run: npm test
+
+  # ============================================================================
+  # Build (matrix) — compile the server and the UI bundle, verify the outputs
   # ============================================================================
   build:
     name: Build (Node ${{ matrix.node }})
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
@@ -76,9 +181,6 @@ jobs:
 
       - name: Install dependencies
         run: npm ci --ignore-scripts
-
-      - name: Type check
-        run: npx tsc --noEmit
 
       - name: Build
         run: npm run build
@@ -107,6 +209,7 @@ jobs:
   audit:
     name: Security Audit
     runs-on: ubuntu-latest
+    timeout-minutes: 10
 
     steps:
       - name: Checkout
@@ -132,6 +235,7 @@ jobs:
   pack-check:
     name: Package Check
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     needs: build
 
     steps:
@@ -166,3 +270,36 @@ jobs:
           npm pack --dry-run 2>&1 | grep -q "scripts/postinstall.js" || (echo "❌ scripts/postinstall.js not in package" && exit 1)
           npm pack --dry-run 2>&1 | grep -q "README.md" || (echo "❌ README.md not in package" && exit 1)
           echo "✅ All essential files present in package"
+
+  # ============================================================================
+  # Aggregate gate — the single required check for branch protection
+  # ============================================================================
+  ci-success:
+    name: CI Success
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: [workflow-lint, lint, typecheck, test, build, audit, pack-check]
+    if: always()
+    steps:
+      - name: Check all jobs passed
+        env:
+          RESULTS: |
+            workflow-lint=${{ needs.workflow-lint.result }}
+            lint=${{ needs.lint.result }}
+            typecheck=${{ needs.typecheck.result }}
+            test=${{ needs.test.result }}
+            build=${{ needs.build.result }}
+            audit=${{ needs.audit.result }}
+            pack-check=${{ needs.pack-check.result }}
+        run: |
+          failed=0
+          while IFS='=' read -r job result; do
+            [[ -z "$job" ]] && continue
+            printf '%-16s %s\n' "$job" "$result"
+            [[ "$result" == "success" ]] || failed=1
+          done <<< "$RESULTS"
+          if [[ "$failed" -ne 0 ]]; then
+            echo "One or more required jobs failed"
+            exit 1
+          fi
+          echo "All CI checks passed!"

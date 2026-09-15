@@ -1,21 +1,23 @@
 # ==============================================================================
-# Docker image — build, lint, scan, smoke-test; publish on release
+# Docker image — lint, build, scan, smoke-test; publish on release
 # ==============================================================================
-# Every push to main and every pull request:
-#   hadolint the Dockerfile → build the image (linux/amd64, not pushed) →
-#   Trivy vulnerability scan (HIGH/CRITICAL, fixed-only, fails the job) →
-#   run the container with the production hardening flags and complete an MCP
-#   handshake over stdio.
-# Release tags (v*.*.*): the same, then push to Docker Hub as
-#   <DOCKERHUB_USERNAME>/storj-uplink-mcp:<version>, :<major>.<minor>, :<major>, :latest
-#   with SBOM + SLSA provenance attestations, and sync the README to Docker Hub.
-# Manual runs can push an :edge tag for testing a build before a release.
+# One job per stage, in order:
+#   lint      hadolint on the Dockerfile — runs for everyone, needs no secrets
+#   creds     resolves whether Docker Hub credentials are available
+#   image     build (linux/amd64, loaded into the runner), Trivy scan and an
+#             MCP handshake inside the hardened container
+#   publish   release tags only: push to Docker Hub with SBOM and provenance,
+#             and sync the README
+#
+# The image is built under a throwaway `ci-<sha>` tag so the scan and the smoke
+# test always name the artifact they just built; the release tags are computed
+# separately in `publish`, which rebuilds from the build cache before pushing.
 #
 # Secrets required (Settings → Secrets and variables → Actions):
 #   DOCKERHUB_USERNAME — Docker Hub account name (also the image namespace)
 #   DOCKERHUB_TOKEN    — Docker Hub personal access token with Read & Write
 # The same credentials log in to dhi.io for the Docker Hardened base images.
-# Pull requests from forks have no secrets: the job then reports and stops.
+# Pull requests from forks have no secrets: `image` and `publish` are skipped.
 # ==============================================================================
 
 name: Docker
@@ -46,20 +48,37 @@ env:
   PLATFORM: linux/amd64   # storj-uplink-nodejs ships a linux-x64 prebuilt only
 
 jobs:
-  image:
-    name: Build, scan, smoke-test${{ startsWith(github.ref, 'refs/tags/v') && ', publish' || '' }}
+  # ============================================================================
+  # Dockerfile lint
+  # ============================================================================
+  lint:
+    name: Lint Dockerfile
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      security-events: write   # Trivy SARIF → code scanning
+    timeout-minutes: 10
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
-      - name: Check Docker Hub credentials
-        id: creds
+      - name: hadolint
+        uses: hadolint/hadolint-action@06be81baf89a55ffd0e24b8f04a4185738dd3387 # v3.5.0
+        with:
+          dockerfile: infra/Dockerfile
+          failure-threshold: warning
+
+  # ============================================================================
+  # Credentials preflight — secrets cannot be read in a job-level `if`
+  # ============================================================================
+  creds:
+    name: Check Docker Hub credentials
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      available: ${{ steps.check.outputs.available }}
+    steps:
+      - name: Check
+        id: check
         env:
           HAS_USER: ${{ secrets.DOCKERHUB_USERNAME != '' }}
           HAS_TOKEN: ${{ secrets.DOCKERHUB_TOKEN != '' }}
@@ -71,52 +90,37 @@ jobs:
             echo "::notice::DOCKERHUB_USERNAME / DOCKERHUB_TOKEN are not set (fork PR or secrets missing); the Docker Hardened base images need them, so the image build is skipped."
           fi
 
-      - name: Lint Dockerfile (hadolint)
-        uses: hadolint/hadolint-action@06be81baf89a55ffd0e24b8f04a4185738dd3387 # v3.5.0
+  # ============================================================================
+  # Build, scan, smoke-test the image that a release would publish
+  # ============================================================================
+  image:
+    name: Build, scan, smoke-test
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    needs: [lint, creds]
+    if: needs.creds.outputs.available == 'true'
+    permissions:
+      contents: read
+      security-events: write   # Trivy SARIF → code scanning
+    env:
+      REF: docker.io/${{ secrets.DOCKERHUB_USERNAME }}/storj-uplink-mcp:ci-${{ github.sha }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          dockerfile: infra/Dockerfile
-          failure-threshold: warning
+          persist-credentials: false
 
       - name: Log in to dhi.io (hardened base images)
-        if: steps.creds.outputs.available == 'true'
         uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:
           registry: dhi.io
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Log in to Docker Hub
-        if: steps.creds.outputs.available == 'true'
-        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-
       - name: Set up Buildx
-        if: steps.creds.outputs.available == 'true'
         uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
 
-      - name: Image tags and labels
-        if: steps.creds.outputs.available == 'true'
-        id: meta
-        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
-        with:
-          images: ${{ env.IMAGE }}
-          tags: |
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=semver,pattern={{major}}
-            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
-            type=raw,value=edge,enable=${{ github.event_name == 'workflow_dispatch' && inputs.push_edge }}
-            type=raw,value=ci-${{ github.sha }},enable=${{ !startsWith(github.ref, 'refs/tags/v') }}
-          labels: |
-            org.opencontainers.image.title=storj-uplink-mcp
-            org.opencontainers.image.description=MCP server for Storj decentralized cloud storage (stdio transport)
-            org.opencontainers.image.licenses=MIT
-
-      # Build once, load into the runner's Docker for scanning and the smoke test.
       - name: Build image
-        if: steps.creds.outputs.available == 'true'
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: .
@@ -124,16 +128,14 @@ jobs:
           platforms: ${{ env.PLATFORM }}
           load: true
           push: false
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          tags: ${{ env.REF }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
       - name: Vulnerability scan (Trivy, fails on HIGH/CRITICAL with a fix)
-        if: steps.creds.outputs.available == 'true'
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
-          image-ref: ${{ env.IMAGE }}:ci-${{ github.sha }}
+          image-ref: ${{ env.REF }}
           format: sarif
           output: trivy.sarif
           severity: HIGH,CRITICAL
@@ -142,16 +144,13 @@ jobs:
           scanners: vuln
 
       - name: Upload scan results to code scanning
-        if: always() && steps.creds.outputs.available == 'true' && hashFiles('trivy.sarif') != ''
+        if: always() && hashFiles('trivy.sarif') != ''
         uses: github/codeql-action/upload-sarif@b96794f015dfd88f77b49b1c93e0fa7110f94c63 # v4.38.0
         with:
           sarif_file: trivy.sarif
           category: trivy-image
 
       - name: Smoke test (MCP handshake in the hardened container)
-        if: steps.creds.outputs.available == 'true'
-        env:
-          REF: ${{ env.IMAGE }}:ci-${{ github.sha }}
         run: |
           printf '%s\n' \
             '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"ci","version":"0"}}}' \
@@ -169,9 +168,63 @@ jobs:
               if (n < 20) { console.error("unexpected tool count"); process.exit(1); }
             });'
 
-      # ---- release / manual publish only --------------------------------------
+      - name: Report the bundled Storj binding
+        run: |
+          docker run --rm --entrypoint node "$REF" \
+            -e "const l=require('storj-uplink-nodejs');console.log('storj-uplink-nodejs',l.VERSION,'| uplink-c',l.uplinkCVersion().storjUplink)"
+
+  # ============================================================================
+  # Publish — release tags, or a manual run that asked for :edge
+  # ============================================================================
+  publish:
+    name: Publish to Docker Hub
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    needs: [creds, image]
+    if: |
+      needs.creds.outputs.available == 'true' &&
+      (startsWith(github.ref, 'refs/tags/v') ||
+       (github.event_name == 'workflow_dispatch' && inputs.push_edge))
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Log in to dhi.io (hardened base images)
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: dhi.io
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+
+      - name: Release tags and labels
+        id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        with:
+          images: ${{ env.IMAGE }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+            type=raw,value=edge,enable=${{ github.event_name == 'workflow_dispatch' && inputs.push_edge }}
+          labels: |
+            org.opencontainers.image.title=storj-uplink-mcp
+            org.opencontainers.image.description=MCP server for Storj decentralized cloud storage (stdio transport)
+            org.opencontainers.image.licenses=MIT
+
+      # Same context and cache as the `image` job, so this reuses those layers.
       - name: Push to Docker Hub
-        if: steps.creds.outputs.available == 'true' && (startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.push_edge))
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: .
@@ -185,7 +238,7 @@ jobs:
           cache-from: type=gha
 
       - name: Sync README to Docker Hub
-        if: steps.creds.outputs.available == 'true' && startsWith(github.ref, 'refs/tags/v')
+        if: startsWith(github.ref, 'refs/tags/v')
         uses: peter-evans/dockerhub-description@1b9a80c056b620d92cedb9d9b5a223409c68ddfa # v5.0.0
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
@@ -195,16 +248,13 @@ jobs:
           readme-filepath: ./README.md
 
       - name: Summary
-        if: steps.creds.outputs.available == 'true'
         env:
           TAGS: ${{ steps.meta.outputs.tags }}
-          PUSHED: ${{ startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.push_edge) }}
         run: |
           {
-            echo "## Docker image"
+            echo "## Published to Docker Hub"
             echo ""
             echo "- Platform: $PLATFORM"
-            echo "- Pushed to Docker Hub: $PUSHED"
             echo "- Tags:"
             printf '%s\n' "$TAGS" | sed 's/^/  - /'
           } >> "$GITHUB_STEP_SUMMARY"
