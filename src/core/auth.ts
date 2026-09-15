@@ -29,6 +29,10 @@ function accessFromConfig(uplink: Uplink, config: StorjMcpConfig): Promise<Acces
   throw new Error('Config file exists but is missing required fields. Run: npx storj-uplink-mcp-setup');
 }
 
+// The ENV.* constants below are variable *names* ("STORJ_API_KEY"), never their
+// values, so logging them discloses nothing. CodeQL's js/clear-text-logging
+// flags the property read itself; those two alerts are dismissed as false
+// positives. Credential values are never logged anywhere in this server.
 async function resolveAccess(): Promise<AccessResultStruct> {
   const uplink = new Uplink();
   const env = readStorjEnv();

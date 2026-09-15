@@ -88,6 +88,11 @@ COPY --from=build --chown=1000:1000 /app/dist ./dist
 USER 1000:1000
 
 # The hardened runtime image has no ENTRYPOINT; `node` is on PATH.
+# This server speaks MCP over stdin/stdout: it exits with its client and has no
+# endpoint to probe, so a health check would have nothing to report. Declared
+# explicitly so the absence is a decision rather than an oversight.
+HEALTHCHECK NONE
+
 CMD ["node", "dist/index.js"]
 
 LABEL org.opencontainers.image.title="storj-uplink-mcp" \

@@ -61,10 +61,13 @@ function deriveKey(): Buffer {
 // Encrypt / Decrypt
 // ---------------------------------------------------------------------------
 
+/** Full-length GCM authentication tag, in bytes. */
+const AUTH_TAG_BYTES = 16;
+
 function encrypt(plaintext: string): { iv: string; authTag: string; ciphertext: string } {
   const key = deriveKey();
   const iv = crypto.randomBytes(16);
-  const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
+  const cipher = crypto.createCipheriv('aes-256-gcm', key, iv, { authTagLength: AUTH_TAG_BYTES });
   const encrypted = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
   const authTag = cipher.getAuthTag();
   return {
@@ -76,8 +79,16 @@ function encrypt(plaintext: string): { iv: string; authTag: string; ciphertext: 
 
 function decrypt(iv: string, authTag: string, ciphertext: string): string {
   const key = deriveKey();
-  const decipher = crypto.createDecipheriv('aes-256-gcm', key, Buffer.from(iv, 'hex'));
-  decipher.setAuthTag(Buffer.from(authTag, 'hex'));
+  const tag = Buffer.from(authTag, 'hex');
+  // Without a fixed length GCM accepts a truncated tag, and a short tag is far
+  // cheaper to forge. Require the full 128 bits.
+  if (tag.length !== AUTH_TAG_BYTES) {
+    throw new Error('Stored credentials are corrupt: authentication tag has the wrong length');
+  }
+  const decipher = crypto.createDecipheriv('aes-256-gcm', key, Buffer.from(iv, 'hex'), {
+    authTagLength: AUTH_TAG_BYTES,
+  });
+  decipher.setAuthTag(tag);
   const decrypted = Buffer.concat([
     decipher.update(Buffer.from(ciphertext, 'hex')),
     decipher.final(),

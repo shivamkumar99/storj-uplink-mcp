@@ -43,8 +43,9 @@ concurrency:
   group: docker-${{ github.ref }}
   cancel-in-progress: true
 
+# Workflow-level env reaches every job, including ones that never talk to
+# Docker Hub, so the image name (which embeds the account) is set per job.
 env:
-  IMAGE: docker.io/${{ secrets.DOCKERHUB_USERNAME }}/storj-uplink-mcp
   PLATFORM: linux/amd64   # storj-uplink-nodejs ships a linux-x64 prebuilt only
 
 jobs:
@@ -189,6 +190,8 @@ jobs:
     name: Publish to Docker Hub
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    env:
+      IMAGE: docker.io/${{ secrets.DOCKERHUB_USERNAME }}/storj-uplink-mcp
     needs: [creds, image]
     if: |
       needs.creds.outputs.available == 'true' &&
