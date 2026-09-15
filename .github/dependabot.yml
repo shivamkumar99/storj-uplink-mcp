@@ -1,12 +1,18 @@
 # ==============================================================================
 # Dependabot — keep dependencies and pinned actions current
 # ==============================================================================
-# Security updates arrive as soon as an advisory lands, regardless of the
-# schedule below. The weekly runs pick up everything else, grouped so that a
-# routine bump is one pull request to review rather than a dozen.
+# One pull request per ecosystem, not one per package: every update in an
+# ecosystem lands in a single grouped PR, so a weekly refresh costs one CI run
+# instead of a dozen. open-pull-requests-limit: 1 keeps a second PR from being
+# opened while the first is still in review.
+#
+# Dependabot cannot combine ecosystems into one PR — npm, actions and Docker
+# each get their own — so a busy week is at most three PRs.
 #
 # cooldown holds off on a release for its first week. A compromised package is
 # usually caught and yanked within days, and nothing here needs a same-day bump.
+# Security updates ignore both the schedule and the grouping: an advisory opens
+# its own PR immediately.
 # ==============================================================================
 version: 2
 
@@ -17,20 +23,16 @@ updates:
       interval: weekly
       day: monday
       time: '04:00'
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 1
     cooldown:
       default-days: 7
     groups:
-      production:
-        dependency-type: production
-        update-types: [minor, patch]
-      development:
-        dependency-type: development
-        update-types: [minor, patch]
+      npm:
+        patterns: ['*']
+        update-types: [minor, patch, major]
     labels: [dependencies]
     commit-message:
       prefix: 'chore(deps)'
-      prefix-development: 'chore(deps-dev)'
 
   # Actions are pinned to commit SHAs; Dependabot rewrites the SHA and the
   # version comment together, which is the only sane way to keep pins fresh.
@@ -40,12 +42,13 @@ updates:
       interval: weekly
       day: monday
       time: '04:00'
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 1
     cooldown:
       default-days: 7
     groups:
       actions:
         patterns: ['*']
+        update-types: [minor, patch, major]
     labels: [dependencies, ci]
     commit-message:
       prefix: 'ci(deps)'
@@ -56,9 +59,13 @@ updates:
       interval: weekly
       day: monday
       time: '04:00'
-    open-pull-requests-limit: 3
+    open-pull-requests-limit: 1
     cooldown:
       default-days: 7
+    groups:
+      docker:
+        patterns: ['*']
+        update-types: [minor, patch, major]
     labels: [dependencies, docker]
     commit-message:
       prefix: 'chore(docker)'
