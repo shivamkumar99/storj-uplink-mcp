@@ -4,6 +4,9 @@
 # Security updates arrive as soon as an advisory lands, regardless of the
 # schedule below. The weekly runs pick up everything else, grouped so that a
 # routine bump is one pull request to review rather than a dozen.
+#
+# cooldown holds off on a release for its first week. A compromised package is
+# usually caught and yanked within days, and nothing here needs a same-day bump.
 # ==============================================================================
 version: 2
 
@@ -15,6 +18,8 @@ updates:
       day: monday
       time: '04:00'
     open-pull-requests-limit: 5
+    cooldown:
+      default-days: 7
     groups:
       production:
         dependency-type: production
@@ -36,6 +41,8 @@ updates:
       day: monday
       time: '04:00'
     open-pull-requests-limit: 5
+    cooldown:
+      default-days: 7
     groups:
       actions:
         patterns: ['*']
@@ -50,6 +57,8 @@ updates:
       day: monday
       time: '04:00'
     open-pull-requests-limit: 3
+    cooldown:
+      default-days: 7
     labels: [dependencies, docker]
     commit-message:
       prefix: 'chore(docker)'

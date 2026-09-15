@@ -97,7 +97,11 @@ jobs:
         with:
           persist-credentials: false
 
+      # Requires the repository's dependency graph (Settings → Advanced Security
+      # → Dependency graph). Until that is on, the action reports "not supported"
+      # and this stays advisory; drop continue-on-error to make it blocking.
       - name: Review dependency changes
+        continue-on-error: true
         uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
         with:
           fail-on-severity: high
