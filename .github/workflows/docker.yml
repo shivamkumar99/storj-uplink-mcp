@@ -82,12 +82,21 @@ jobs:
         env:
           HAS_USER: ${{ secrets.DOCKERHUB_USERNAME != '' }}
           HAS_TOKEN: ${{ secrets.DOCKERHUB_TOKEN != '' }}
+          IS_DEPENDABOT: ${{ github.actor == 'dependabot[bot]' }}
+          IS_FORK: ${{ github.event.pull_request.head.repo.fork == true }}
         run: |
           if [[ "$HAS_USER" == "true" && "$HAS_TOKEN" == "true" ]]; then
             echo "available=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "available=false" >> "$GITHUB_OUTPUT"
+          # Say which of the three cases this is; they need different responses.
+          if [[ "$IS_DEPENDABOT" == "true" ]]; then
+            echo "::notice::Dependabot runs never receive repository secrets, so the hardened base images cannot be pulled and the image build is skipped. This is expected: the same commit is built on main after merge. Putting the Docker Hub token in the Dependabot secrets store would expose it to whatever a dependency update pulls in."
+          elif [[ "$IS_FORK" == "true" ]]; then
+            echo "::notice::Pull requests from forks do not receive repository secrets, so the image build is skipped."
           else
-            echo "available=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::DOCKERHUB_USERNAME / DOCKERHUB_TOKEN are not set (fork PR or secrets missing); the Docker Hardened base images need them, so the image build is skipped."
+            echo "::warning::DOCKERHUB_USERNAME / DOCKERHUB_TOKEN are not set on this repository; the Docker Hardened base images need them, so the image build is skipped. Add them under Settings → Secrets and variables → Actions."
           fi
 
   # ============================================================================

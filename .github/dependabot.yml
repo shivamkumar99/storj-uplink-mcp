@@ -1,10 +1,17 @@
 # ==============================================================================
 # Dependabot — keep dependencies and pinned actions current
 # ==============================================================================
-# One pull request per ecosystem, not one per package: every update in an
-# ecosystem lands in a single grouped PR, so a weekly refresh costs one CI run
-# instead of a dozen. open-pull-requests-limit: 1 keeps a second PR from being
-# opened while the first is still in review.
+# Two grouped pull requests per ecosystem at most, never one per package:
+#
+#   <ecosystem>        every patch and minor update — safe, usually green, and
+#                      the one you merge weekly. This is the routine PR.
+#   <ecosystem>-major  every major update, batched together.
+#
+# Majors are kept out of the routine batch because one incompatible major
+# blocks everything shipping with it: grouping all five npm updates together
+# produced a PR that could not even install, because TypeScript 7 is outside
+# the peer range of typescript-eslint 8. A red batch costs more CI than a
+# separate PR does, since every push re-runs it.
 #
 # Dependabot cannot combine ecosystems into one PR — npm, actions and Docker
 # each get their own — so a busy week is at most three PRs.
@@ -23,13 +30,16 @@ updates:
       interval: weekly
       day: monday
       time: '04:00'
-    open-pull-requests-limit: 1
+    open-pull-requests-limit: 2
     cooldown:
       default-days: 7
     groups:
       npm:
         patterns: ['*']
-        update-types: [minor, patch, major]
+        update-types: [minor, patch]
+      npm-major:
+        patterns: ['*']
+        update-types: [major]
     labels: [dependencies]
     commit-message:
       prefix: 'chore(deps)'
@@ -42,13 +52,16 @@ updates:
       interval: weekly
       day: monday
       time: '04:00'
-    open-pull-requests-limit: 1
+    open-pull-requests-limit: 2
     cooldown:
       default-days: 7
     groups:
       actions:
         patterns: ['*']
-        update-types: [minor, patch, major]
+        update-types: [minor, patch]
+      actions-major:
+        patterns: ['*']
+        update-types: [major]
     labels: [dependencies, ci]
     commit-message:
       prefix: 'ci(deps)'
@@ -59,13 +72,16 @@ updates:
       interval: weekly
       day: monday
       time: '04:00'
-    open-pull-requests-limit: 1
+    open-pull-requests-limit: 2
     cooldown:
       default-days: 7
     groups:
       docker:
         patterns: ['*']
-        update-types: [minor, patch, major]
+        update-types: [minor, patch]
+      docker-major:
+        patterns: ['*']
+        update-types: [major]
     labels: [dependencies, docker]
     commit-message:
       prefix: 'chore(docker)'
