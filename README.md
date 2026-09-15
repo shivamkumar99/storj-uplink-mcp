@@ -304,13 +304,81 @@ Credentials are stored encrypted at `~/.storj-mcp/config.json` using AES-256-GCM
 
 ## Running in Docker
 
-Released versions are on Docker Hub as [`shivam995364/storj-uplink-mcp`](https://hub.docker.com/r/shivam995364/storj-uplink-mcp) (linux/amd64, scanned on every build, SBOM and provenance attached):
+Released versions are published to Docker Hub as [`shivam995364/storj-uplink-mcp`](https://hub.docker.com/r/shivam995364/storj-uplink-mcp): linux/amd64, built on [Docker Hardened Images](https://docs.docker.com/dhi/), scanned with Trivy on every build, with SBOM and provenance attestations attached.
+
+### 1. Pull the image
 
 ```bash
 docker pull shivam995364/storj-uplink-mcp:latest
 ```
 
-A hardened image (multi-stage on Docker Hardened Images, non-root, no shell, pinned base digests) and a compose file with read-only rootfs, dropped capabilities and resource limits live in [infra/](infra/). Build with `npm run docker:build` and point your MCP client at `docker run -i …` as shown in [infra/README.md](infra/README.md).
+Every release tag publishes `:latest`, the exact version (`:1.0.2`), and the moving `:1.0` and `:1` tags. Pin the exact version in production.
+
+### 2. Run it
+
+The server speaks the MCP **stdio** transport: the client starts the process and exchanges JSON-RPC over stdin and stdout. There is no daemon and no port to publish, so the container is started per session with `-i` and given credentials at run time.
+
+```bash
+docker run -i --rm \
+  --read-only \
+  --tmpfs /tmp:rw,noexec,nosuid,nodev,size=64m \
+  --cap-drop ALL \
+  --security-opt no-new-privileges \
+  --pids-limit 128 \
+  --memory 512m \
+  -e STORJ_ACCESS_GRANT="your-access-grant" \
+  shivam995364/storj-uplink-mcp:latest
+```
+
+Keep the grant out of your shell history by putting it in a file instead and passing `--env-file /path/to/storj.env`. The file holds either `STORJ_ACCESS_GRANT=...` or the `STORJ_SATELLITE_ADDRESS` / `STORJ_API_KEY` / `STORJ_PASSPHRASE` trio; `chmod 600` it. Nothing is ever baked into the image.
+
+To check the image works before wiring up a client, send a handshake by hand. It prints the server info and the tool list:
+
+```bash
+printf '%s\n' \
+  '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"cli","version":"0"}}}' \
+  '{"jsonrpc":"2.0","method":"notifications/initialized"}' \
+  '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' \
+  | docker run -i --rm shivam995364/storj-uplink-mcp:latest
+```
+
+### 3. Point your AI client at the image
+
+Use the same flags as the command above, with your credentials file:
+
+```json
+{
+  "mcpServers": {
+    "storj": {
+      "command": "docker",
+      "args": [
+        "run", "-i", "--rm",
+        "--read-only",
+        "--tmpfs", "/tmp:rw,noexec,nosuid,nodev,size=64m",
+        "--cap-drop", "ALL",
+        "--security-opt", "no-new-privileges",
+        "--pids-limit", "128",
+        "--memory", "512m",
+        "--env-file", "/absolute/path/to/storj.env",
+        "-v", "/absolute/path/to/exchange:/data",
+        "shivam995364/storj-uplink-mcp:latest"
+      ]
+    }
+  }
+}
+```
+
+The `-v` mount is what makes the file tools usable: `upload_file`, `upload_directory`, `download_file` and `download_prefix` see the container's filesystem, which is read-only apart from `/tmp`. Mount a host folder and refer to `/data/...` in your prompts. Drop the mount if you only use the text and listing tools.
+
+On Apple Silicon add `"--platform", "linux/amd64"`; the image runs under emulation because the native Storj binding ships a linux-x64 prebuilt.
+
+### Build it yourself
+
+The Dockerfile, a compose file with the same hardening, and the full security notes are in [infra/](infra/):
+
+```bash
+npm run docker:build
+```
 
 ---
 
