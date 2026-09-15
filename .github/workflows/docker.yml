@@ -246,17 +246,25 @@ jobs:
           provenance: mode=max
           cache-from: type=gha
 
+      # Cosmetic, and deliberately not allowed to fail a release: Docker Hub
+      # answers this PATCH with 403 unless the token carries delete rights,
+      # which a publishing token has no business holding. With a Read & Write
+      # token the push above succeeds and this step reports Forbidden; set the
+      # description by hand on Docker Hub, or grant the wider scope knowingly.
       - name: Sync README to Docker Hub
         if: startsWith(github.ref, 'refs/tags/v')
+        continue-on-error: true
         uses: peter-evans/dockerhub-description@1b9a80c056b620d92cedb9d9b5a223409c68ddfa # v5.0.0
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
           repository: ${{ secrets.DOCKERHUB_USERNAME }}/storj-uplink-mcp
-          short-description: MCP server for Storj decentralized cloud storage — Docker Hardened Image, non-root, stdio transport
+          # Docker Hub caps this at 100 bytes; keep it ASCII so the count is obvious.
+          short-description: MCP server for Storj decentralized cloud storage. Hardened, non-root, stdio transport.
           readme-filepath: ./README.md
 
       - name: Summary
+        if: always()
         env:
           TAGS: ${{ steps.meta.outputs.tags }}
         run: |
