@@ -1,6 +1,6 @@
 {
   "name": "storj-uplink-mcp",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "MCP server for Storj decentralized storage — use Storj directly from Claude Desktop, Cursor, Windsurf, VS Code Copilot, and any MCP-compatible AI client. Upload, download, list, share, and manage files on Storj with natural language.",
   "type": "module",
   "bin": {
@@ -42,7 +42,7 @@
     "@modelcontextprotocol/ext-apps": "^1.7.5",
     "@modelcontextprotocol/sdk": "^1.30.0",
     "picomatch": "^4.0.7",
-    "storj-uplink-nodejs": "^1.0.3",
+    "storj-uplink-nodejs": "^1.0.6",
     "zod": "^3.25.0"
   },
   "devDependencies": {
