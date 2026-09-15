@@ -1,5 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { registerTools, type Tool } from './core/registry.js';
+import { VERSION } from './core/version.js';
 import { registerUiResources } from './core/ui-resources.js';
 import { ENV, readDisplayTimeZone } from './core/env.js';
 import { isValidTimeZone, setDisplayTimeZone } from './lib/format.js';
@@ -46,7 +47,7 @@ export function createServer(): McpServer {
   applyDisplayTimeZone();
   const server = new McpServer({
     name: 'storj-uplink-mcp',
-    version: '1.0.1',
+    version: VERSION,
   });
 
   registerTools(server, TOOLS);
